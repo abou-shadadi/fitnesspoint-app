@@ -1,0 +1,2 @@
+openssl genpkey -algorithm RSA -out secrets/oauth/oauth-private.key -aes256
+openssl rsa -pubout -in secrets/oauth/oauth-private.key -out secrets/oauth/oauth-public.key

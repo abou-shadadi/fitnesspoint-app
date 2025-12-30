@@ -15,6 +15,11 @@ return new class extends Migration
             $table->id();
             $table->string('reference');
 
+            $table->foreignId('company_subscription_invoice_id')
+                ->constrained('company_subscription_invoices')
+                ->onDelete('cascade');
+
+
             $table->foreignId('company_subscription_id')
                 ->constrained()
                 ->name('cst_company_subscription_fk');

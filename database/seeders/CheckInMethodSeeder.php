@@ -30,6 +30,7 @@ class CheckInMethodSeeder extends Seeder
                     'name' => 'Signature',
                     'description' => 'Check-in using digital signature',
                     'key' => 'signature',
+                    'require_file' => true,
                     'status' => 'active'
                 ],
                 [

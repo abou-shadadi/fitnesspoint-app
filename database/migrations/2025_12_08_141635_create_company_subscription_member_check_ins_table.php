@@ -24,7 +24,7 @@ return new class extends Migration
                 ->constrained('branches')
                 ->name('csm_checkin_branch_fk');
 
-            $table->string('signature')->nullable();
+            $table->longText('signature')->nullable();
 
             $table->json('metadata')->nullable();
 

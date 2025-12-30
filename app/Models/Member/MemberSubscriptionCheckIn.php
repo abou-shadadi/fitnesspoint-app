@@ -10,6 +10,12 @@ class MemberSubscriptionCheckIn extends Model
     use HasFactory;
     protected $guarded = [];
 
+
+    protected $casts = [
+		'metadata' => 'json',
+        'datetime' => 'datetime',
+	];
+
     public function member_subscription()
     {
         return $this->belongsTo(MemberSubscription::class);

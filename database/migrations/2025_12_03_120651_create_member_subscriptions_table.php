@@ -15,8 +15,8 @@ return new class extends Migration
             $table->id();
             $table->foreignId('member_id')->constrained();
             $table->foreignId('plan_id')->constrained();
-            $table->timestamp('start_date');
-            $table->timestamp('end_date')->nullable();
+            $table->timestamp('start_date'); // can contain time
+            $table->timestamp('end_date')->nullable(); // cona contain time
             $table->text('notes')->nullable();
             $table->foreignId('created_by_id')->constrained('users');
             $table->foreignId('branch_id')->constrained('branches');

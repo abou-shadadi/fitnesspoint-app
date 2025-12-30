@@ -263,6 +263,36 @@ Route::middleware('auth:sanctum')->group(function () {
                             Route::put('/status', 'App\Http\Controllers\Api\V1\Company\Subscription\Transaction\CompanySubscriptionTransactionController@updateStatus');
                         });
                     });
+
+
+                    // Invoices
+                    Route::prefix('invoices')->group(function () {
+
+                        Route::get('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CompanySubscriptionInvoiceController@index');
+                        Route::post('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CompanySubscriptionInvoiceController@store');
+                        Route::group(['prefix' => '{companySubscriptionInvoiceId}'], function () {
+                            Route::get('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CompanySubscriptionInvoiceController@show');
+                            Route::put('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CompanySubscriptionInvoiceController@update');
+                            Route::delete('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CompanySubscriptionInvoiceController@destroy');
+
+                            // export
+                            Route::get('/export', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CompanySubscriptionInvoiceController@export');
+
+                            // check-ins
+                            Route::prefix('check-ins')->group(function () {
+                                Route::get('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CheckIn\CompanySubscriptionInvoiceCheckInController@index');
+                                Route::post('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CheckIn\CompanySubscriptionInvoiceCheckInController@store');
+                                Route::group(['prefix' => '{companySubscriptionInvoiceCheckInId}'], function () {
+                                    Route::get('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CheckIn\CompanySubscriptionInvoiceCheckInController@show');
+                                    Route::put('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CheckIn\CompanySubscriptionInvoiceCheckInController@update');
+                                    Route::delete('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CheckIn\CompanySubscriptionInvoiceCheckInController@destroy');
+
+                                    // export
+                                    Route::get('/export', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CheckIn\CompanySubscriptionInvoiceCheckInController@export');
+                                });
+                            });
+                        });
+                    });
                 });
             });
 
@@ -403,7 +433,7 @@ Route::middleware('auth:sanctum')->group(function () {
                     Route::prefix('check-ins')->group(function () {
                         Route::get('/', 'App\Http\Controllers\Api\V1\Member\Subscription\CheckIn\MemberSubscriptionCheckInController@index');
                         Route::post('/', 'App\Http\Controllers\Api\V1\Member\Subscription\CheckIn\MemberSubscriptionCheckInController@store');
-                        Route::get('/summary/daily', 'App\Http\Controllers\Api\V1\Member\Subscription\CheckIn\MemberSubscriptionCheckInController@summaryDaily');
+                        Route::get('/summary/daily', 'App\Http\Controllers\Api\V1\Member\Subscription\CheckIn\MemberSubscriptionCheckInController@dailySummary');
                         Route::prefix('{memberSubscriptionCheckInId}')->group(function () {
                             Route::get('/', 'App\Http\Controllers\Api\V1\Member\Subscription\CheckIn\MemberSubscriptionCheckInController@show');
                             Route::put('/', 'App\Http\Controllers\Api\V1\Member\Subscription\CheckIn\MemberSubscriptionCheckInController@update');
@@ -543,6 +573,39 @@ Route::middleware('auth:sanctum')->group(function () {
                 Route::delete('/', 'App\Http\Controllers\Api\V1\Utils\CheckIn\CheckInMethodController@destroy');
             });
         });
+
+        // invoice_tax_rates
+        Route::group(['prefix' => 'invoice-tax-rates'], function () {
+            Route::get('/', 'App\Http\Controllers\Api\V1\Utils\Invoice\InvoiceTaxRateController@index');
+            Route::post('/', 'App\Http\Controllers\Api\V1\Utils\Invoice\InvoiceTaxRateController@store');
+            Route::group(['prefix' => '{invoiceTaxRateId}'], function () {
+                Route::get('/', 'App\Http\Controllers\Api\V1\Utils\Invoice\InvoiceTaxRateController@show');
+                Route::put('/', 'App\Http\Controllers\Api\V1\Utils\Invoice\InvoiceTaxRateController@update');
+                Route::delete('/', 'App\Http\Controllers\Api\V1\Utils\Invoice\InvoiceTaxRateController@destroy');
+            });
+        });
+
+        // rate_types
+        Route::group(['prefix' => 'rate-types'], function () {
+            Route::get('/', 'App\Http\Controllers\Api\V1\Utils\Rate\RateTypeController@index');
+            Route::post('/', 'App\Http\Controllers\Api\V1\Utils\Rate\RateTypeController@store');
+            Route::group(['prefix' => '{rateTypeId}'], function () {
+                Route::get('/', 'App\Http\Controllers\Api\V1\Utils\Rate\RateTypeController@show');
+                Route::put('/', 'App\Http\Controllers\Api\V1\Utils\Rate\RateTypeController@update');
+                Route::delete('/', 'App\Http\Controllers\Api\V1\Utils\Rate\RateTypeController@destroy');
+            });
+        });
+
+        // Discount Types
+        Route::group(['prefix' => 'discount-types'], function () {
+            Route::get('/', 'App\Http\Controllers\Api\V1\Utils\Discount\DiscountTypeController@index');
+            Route::post('/', 'App\Http\Controllers\Api\V1\Utils\Discount\DiscountTypeController@store');
+            Route::group(['prefix' => '{discountTypeId}'], function () {
+                Route::get('/', 'App\Http\Controllers\Api\V1\Utils\Discount\DiscountTypeController@show');
+                Route::put('/', 'App\Http\Controllers\Api\V1\Utils\Discount\DiscountTypeController@update');
+                Route::delete('/', 'App\Http\Controllers\Api\V1\Utils\Discount\DiscountTypeController@destroy');
+            });
+        });
     });
 
     // group by billing
@@ -568,6 +631,20 @@ Route::middleware('auth:sanctum')->group(function () {
             // dynamic route last
             Route::get('{id}', 'App\Http\Controllers\Api\V1\Member\Subscription\Billing\MemberBillingController@show');
             Route::get('/', 'App\Http\Controllers\Api\V1\Member\Subscription\Billing\MemberBillingController@index');
+        });
+    });
+
+    // check-ins
+    Route::prefix('check-ins')->group(function () {
+        Route::get('/', 'App\Http\Controllers\Api\V1\CheckIn\MemberCheckInController@index');
+        Route::get('/summary/daily','App\Http\Controllers\Api\V1\CheckIn\MemberCheckInController@dailySummary');
+        // hourly summary
+        Route::get('/summary/hourly','App\Http\Controllers\Api\V1\CheckIn\MemberCheckInController@hourlySummary');
+        //member activitysummary
+        Route::get('/summary/member-activity','App\Http\Controllers\Api\V1\CheckIn\MemberCheckInController@memberActivitySummary');
+
+        Route::prefix('{memberSubscriptionCheckInId}')->group(function () {
+            Route::get('/', 'App\Http\Controllers\Api\V1\CheckIn\MemberCheckInController@show');
         });
     });
 });

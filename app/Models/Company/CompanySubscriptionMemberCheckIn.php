@@ -11,6 +11,9 @@ class CompanySubscriptionMemberCheckIn extends Model
 
     protected $guarded = [];
 
+    protected $casts = [
+        'metadata' => 'json',
+    ];
 
     public function company_subscription_member()
     {
@@ -31,5 +34,4 @@ class CompanySubscriptionMemberCheckIn extends Model
     {
         return $this->belongsTo(\App\Models\User::class);
     }
-
 }

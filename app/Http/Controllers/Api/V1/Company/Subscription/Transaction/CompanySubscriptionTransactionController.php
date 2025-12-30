@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\Company\Company;
 use App\Models\Company\CompanySubscription;
 use App\Models\Company\CompanySubscriptionTransaction;
+use App\Models\Company\CompanySubscriptionInvoice;
 use App\Models\Payment\PaymentMethod;
 use App\Models\Branch\Branch;
 use App\Models\Company\CompanySubscriptionMemberCheckIn;
@@ -15,9 +16,17 @@ use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use App\Services\File\Base64Service;
 
 class CompanySubscriptionTransactionController extends Controller
 {
+    protected $base64Service;
+
+    public function __construct(Base64Service $base64Service)
+    {
+        $this->base64Service = $base64Service;
+    }
+
     /**
      * @OA\Get(
      *     path="/api/companies/{companyId}/subscriptions/{subscriptionId}/transactions",
@@ -122,7 +131,7 @@ class CompanySubscriptionTransactionController extends Controller
             }
 
             $query = CompanySubscriptionTransaction::where('company_subscription_id', $subscriptionId)
-                ->with(['payment_method', 'branch', 'created_by', 'company_subscription']);
+                ->with(['payment_method', 'branch', 'created_by', 'company_subscription', 'company_subscription_invoice']);
 
             // Filter by status
             if ($request->has('status') && in_array($request->status, ['pending', 'completed', 'failed', 'cancelled', 'refunded', 'rejected'])) {
@@ -172,7 +181,6 @@ class CompanySubscriptionTransactionController extends Controller
                 'completed_amount' => $transactions->where('status', 'completed')->sum('amount_paid'),
                 'pending_amount' => $transactions->where('status', 'pending')->sum('amount_paid'),
                 'billing_type' => $subscription->billing_type->key ?? 'unknown',
-                'billing_description' => $this->getBillingDescription($subscription),
             ];
 
             return response()->json([
@@ -219,9 +227,9 @@ class CompanySubscriptionTransactionController extends Controller
      *     @OA\RequestBody(
      *         required=true,
      *         @OA\JsonContent(
-     *             required={"reference", "payment_method_id", "branch_id"},
+     *             required={"company_subscription_invoice_id", "payment_method_id", "branch_id", "amount_paid"},
+     *             @OA\Property(property="company_subscription_invoice_id", type="integer", example=1),
      *             @OA\Property(property="reference", type="string", example="CTXN-2024-001"),
-     *             @OA\Property(property="amount_due", type="number", format="float", example=100000.00),
      *             @OA\Property(property="amount_paid", type="number", format="float", example=100000.00),
      *             @OA\Property(property="date", type="string", format="date", example="2024-01-15"),
      *             @OA\Property(property="payment_method_id", type="integer", example=1),
@@ -238,7 +246,7 @@ class CompanySubscriptionTransactionController extends Controller
      *     ),
      *     @OA\Response(response=201, description="Transaction created successfully"),
      *     @OA\Response(response=400, description="Bad request"),
-     *     @OA\Response(response=404, description="Company, subscription, payment method, or branch not found"),
+     *     @OA\Response(response=404, description="Company, subscription, invoice, payment method, or branch not found"),
      *     @OA\Response(response=409, description="Duplicate reference"),
      *     @OA\Response(response=500, description="Internal server error")
      * )
@@ -270,8 +278,8 @@ class CompanySubscriptionTransactionController extends Controller
 
         // Validate request
         $validator = Validator::make($request->all(), [
-            'reference' => 'required|string|max:100|unique:company_subscription_transactions,reference',
-            'amount_due' => 'required|numeric|min:0.01',
+            'company_subscription_invoice_id' => 'required|exists:company_subscription_invoices,id',
+            'reference' => 'nullable|string|max:100|unique:company_subscription_transactions,reference',
             'amount_paid' => 'required|numeric|min:0.01',
             'date' => 'required|date',
             'payment_method_id' => 'required|exists:payment_methods,id',
@@ -288,6 +296,27 @@ class CompanySubscriptionTransactionController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => $validator->errors()->first(),
+                'data' => null
+            ], 400);
+        }
+
+        // Verify invoice exists and belongs to the subscription
+        $invoice = CompanySubscriptionInvoice::where('company_subscription_id', $subscriptionId)
+            ->find($request->company_subscription_invoice_id);
+
+        if (!$invoice) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invoice not found for this subscription',
+                'data' => null
+            ], 404);
+        }
+
+        // Check if invoice is already paid
+        if ($invoice->status === 'paid') {
+            return response()->json([
+                'success' => false,
+                'message' => 'This invoice is already paid',
                 'data' => null
             ], 400);
         }
@@ -312,8 +341,11 @@ class CompanySubscriptionTransactionController extends Controller
             ], 404);
         }
 
+        // Generate reference if not provided
+        $reference = $request->input('reference', $this->generateTransactionReference());
+
         // Check for duplicate reference
-        $existingTransaction = CompanySubscriptionTransaction::where('reference', $request->input('reference'))->first();
+        $existingTransaction = CompanySubscriptionTransaction::where('reference', $reference)->first();
         if ($existingTransaction) {
             return response()->json([
                 'success' => false,
@@ -326,7 +358,11 @@ class CompanySubscriptionTransactionController extends Controller
         DB::beginTransaction();
 
         try {
-            // Calculate dates based on subscription
+            // Get amount due from invoice
+            $amountDue = $invoice->total_amount;
+            $amountPaid = $request->input('amount_paid');
+
+            // Calculate current and next expiry dates
             $currentExpiryDate = $subscription->end_date ?: now();
             $nextExpiryDate = null;
 
@@ -338,22 +374,16 @@ class CompanySubscriptionTransactionController extends Controller
                 $nextExpiryDate = $this->calculateNextExpiryDate($currentExpiryDate, $duration, $unit);
             }
 
-            // Calculate amount due based on billing type
-            $calculatedAmountDue = $this->calculateAmountDue($subscription);
-
-            // Use calculated amount if not provided
-            $amountDue = $request->input('amount_due', $calculatedAmountDue);
-
             // Create transaction
             $transaction = new CompanySubscriptionTransaction([
+                'company_subscription_invoice_id' => $request->company_subscription_invoice_id,
                 'company_subscription_id' => $subscriptionId,
-                'reference' => $request->input('reference'),
+                'reference' => $reference,
                 'amount_due' => $amountDue,
-                'amount_paid' => $request->input('amount_paid'),
+                'amount_paid' => $amountPaid,
                 'date' => $request->input('date'),
                 'payment_method_id' => $request->input('payment_method_id'),
                 'branch_id' => $request->input('branch_id'),
-                'attachment' => $request->input('attachment'),
                 'notes' => $request->input('notes'),
                 'current_expiry_date' => $currentExpiryDate,
                 'next_expiry_date' => $nextExpiryDate,
@@ -363,17 +393,21 @@ class CompanySubscriptionTransactionController extends Controller
 
             $transaction->save();
 
-            // If transaction status is "completed", update subscription status and end_date
-            if ($transaction->status === 'completed') {
-                $subscription->status = 'in_progress';
-                if ($nextExpiryDate) {
-                    $subscription->end_date = $nextExpiryDate;
-                }
-                $subscription->save();
+            // Handle base64 file attachment
+            if ($request->has('attachment') && $request->attachment) {
+                $this->base64Service->processBase64File($transaction, $request->attachment, 'attachment');
             }
 
+            // If transaction status is "completed", update subscription and invoice
+            if ($transaction->status === 'completed') {
+                $this->handleCompletedTransaction($transaction, $subscription, $invoice);
+            }
+
+            // Calculate total amount paid for this invoice
+            $this->updateInvoicePaymentStatus($invoice);
+
             // Load relationships
-            $transaction->load(['payment_method', 'branch', 'created_by', 'company_subscription.company']);
+            $transaction->load(['payment_method', 'branch', 'created_by', 'company_subscription.company', 'company_subscription_invoice']);
 
             // Commit transaction
             DB::commit();
@@ -383,10 +417,11 @@ class CompanySubscriptionTransactionController extends Controller
                 'message' => 'Company subscription transaction created successfully',
                 'data' => [
                     'transaction' => $transaction,
-                    'billing_info' => [
-                        'type' => $subscription->billing_type->key ?? 'unknown',
-                        'description' => $this->getBillingDescription($subscription),
-                        'calculated_amount_due' => $calculatedAmountDue,
+                    'invoice_info' => [
+                        'id' => $invoice->id,
+                        'reference' => $invoice->reference,
+                        'total_amount' => $invoice->total_amount,
+                        'status' => $invoice->status,
                     ]
                 ]
             ], 201);
@@ -455,7 +490,7 @@ class CompanySubscriptionTransactionController extends Controller
             }
 
             $transaction = CompanySubscriptionTransaction::where('company_subscription_id', $subscriptionId)
-                ->with(['payment_method', 'branch', 'created_by', 'company_subscription.company', 'company_subscription.billing_type'])
+                ->with(['payment_method', 'branch', 'created_by', 'company_subscription.company', 'company_subscription_invoice'])
                 ->find($id);
 
             if (!$transaction) {
@@ -466,19 +501,10 @@ class CompanySubscriptionTransactionController extends Controller
                 ], 404);
             }
 
-            // Get billing description
-            $billingDescription = $this->getBillingDescription($transaction->company_subscription);
-
             return response()->json([
                 'success' => true,
                 'message' => 'Company subscription transaction retrieved successfully',
-                'data' => [
-                    'transaction' => $transaction,
-                    'billing_info' => [
-                        'type' => $transaction->company_subscription->billing_type->key ?? 'unknown',
-                        'description' => $billingDescription,
-                    ]
-                ]
+                'data' => $transaction
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
@@ -517,7 +543,6 @@ class CompanySubscriptionTransactionController extends Controller
      *         required=false,
      *         @OA\JsonContent(
      *             @OA\Property(property="reference", type="string", example="CTXN-2024-001-UPDATED"),
-     *             @OA\Property(property="amount_due", type="number", format="float", example=120000.00),
      *             @OA\Property(property="amount_paid", type="number", format="float", example=120000.00),
      *             @OA\Property(property="date", type="string", format="date", example="2024-01-16"),
      *             @OA\Property(property="payment_method_id", type="integer", example=2),
@@ -542,7 +567,7 @@ class CompanySubscriptionTransactionController extends Controller
     {
         // Find transaction
         $transaction = CompanySubscriptionTransaction::where('company_subscription_id', $subscriptionId)
-            ->with(['company_subscription.billing_type', 'company_subscription.duration_type'])
+            ->with(['company_subscription', 'company_subscription_invoice'])
             ->find($id);
 
         if (!$transaction) {
@@ -556,7 +581,6 @@ class CompanySubscriptionTransactionController extends Controller
         // Validate request
         $validator = Validator::make($request->all(), [
             'reference' => 'nullable|string|max:100|unique:company_subscription_transactions,reference,' . $id,
-            'amount_due' => 'nullable|numeric|min:0.01',
             'amount_paid' => 'nullable|numeric|min:0.01',
             'date' => 'nullable|date',
             'payment_method_id' => 'nullable|exists:payment_methods,id',
@@ -607,23 +631,26 @@ class CompanySubscriptionTransactionController extends Controller
         try {
             $oldStatus = $transaction->status;
             $newStatus = $request->input('status', $transaction->status);
+            $subscription = $transaction->company_subscription;
+            $invoice = $transaction->company_subscription_invoice;
 
             // Prepare update data
             $updateData = [];
             if ($request->has('reference')) $updateData['reference'] = $request->input('reference');
-            if ($request->has('amount_due')) $updateData['amount_due'] = $request->input('amount_due');
             if ($request->has('amount_paid')) $updateData['amount_paid'] = $request->input('amount_paid');
             if ($request->has('date')) $updateData['date'] = $request->input('date');
             if ($request->has('payment_method_id')) $updateData['payment_method_id'] = $request->input('payment_method_id');
             if ($request->has('branch_id')) $updateData['branch_id'] = $request->input('branch_id');
-            if ($request->has('attachment')) $updateData['attachment'] = $request->input('attachment');
             if ($request->has('notes')) $updateData['notes'] = $request->input('notes');
             if ($request->has('status')) $updateData['status'] = $newStatus;
 
+            // Handle attachment update
+            if ($request->has('attachment') && $request->attachment) {
+                $this->base64Service->processBase64File($transaction, $request->attachment, 'attachment', true);
+            }
+
             // Handle status change to "completed"
             if ($newStatus === 'completed' && $oldStatus !== 'completed') {
-                $subscription = $transaction->company_subscription;
-
                 // Calculate new dates if needed
                 if (!$transaction->next_expiry_date && $subscription->duration_type) {
                     $duration = $subscription->duration_type->duration ?? 1;
@@ -640,13 +667,33 @@ class CompanySubscriptionTransactionController extends Controller
                 // Update subscription status
                 $subscription->status = 'in_progress';
                 $subscription->save();
+
+                // Update invoice if needed
+                $this->updateInvoicePaymentStatus($invoice);
+            }
+
+            // Handle status change from "completed"
+            if ($oldStatus === 'completed' && $newStatus !== 'completed') {
+                // Revert subscription status if no other completed transactions
+                $completedTransactionsCount = CompanySubscriptionTransaction::where('company_subscription_id', $subscriptionId)
+                    ->where('status', 'completed')
+                    ->where('id', '!=', $id)
+                    ->count();
+
+                if ($completedTransactionsCount === 0) {
+                    $subscription->status = 'pending';
+                    $subscription->save();
+                }
+
+                // Recalculate invoice status
+                $this->updateInvoicePaymentStatus($invoice);
             }
 
             // Update transaction
             $transaction->update($updateData);
 
             // Load relationships
-            $transaction->load(['payment_method', 'branch', 'created_by', 'company_subscription.company']);
+            $transaction->load(['payment_method', 'branch', 'created_by', 'company_subscription.company', 'company_subscription_invoice']);
 
             // Commit transaction
             DB::commit();
@@ -699,8 +746,11 @@ class CompanySubscriptionTransactionController extends Controller
      */
     public function destroy($companyId, $subscriptionId, $id)
     {
+        DB::beginTransaction();
+
         try {
             $transaction = CompanySubscriptionTransaction::where('company_subscription_id', $subscriptionId)
+                ->with(['company_subscription', 'company_subscription_invoice'])
                 ->find($id);
 
             if (!$transaction) {
@@ -711,26 +761,40 @@ class CompanySubscriptionTransactionController extends Controller
                 ], 404);
             }
 
-            // Start database transaction
-            DB::beginTransaction();
+            $subscription = $transaction->company_subscription;
+            $invoice = $transaction->company_subscription_invoice;
 
-            try {
-                $transaction->delete();
+            // Check if this is a completed transaction
+            if ($transaction->status === 'completed') {
+                // Check if there are other completed transactions
+                $completedTransactionsCount = CompanySubscriptionTransaction::where('company_subscription_id', $subscriptionId)
+                    ->where('status', 'completed')
+                    ->where('id', '!=', $id)
+                    ->count();
 
-                // Commit transaction
-                DB::commit();
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Company subscription transaction deleted successfully',
-                    'data' => null
-                ], 200);
-            } catch (\Exception $e) {
-                // Rollback transaction on error
-                DB::rollBack();
-                throw $e;
+                // If no other completed transactions, revert subscription status
+                if ($completedTransactionsCount === 0) {
+                    $subscription->status = 'pending';
+                    $subscription->save();
+                }
             }
+
+            // Delete transaction
+            $transaction->delete();
+
+            // Update invoice payment status
+            $this->updateInvoicePaymentStatus($invoice);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Company subscription transaction deleted successfully',
+                'data' => null
+            ], 200);
         } catch (\Exception $e) {
+            DB::rollBack();
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -785,7 +849,7 @@ class CompanySubscriptionTransactionController extends Controller
     {
         // Find transaction
         $transaction = CompanySubscriptionTransaction::where('company_subscription_id', $subscriptionId)
-            ->with(['company_subscription.billing_type', 'company_subscription.duration_type'])
+            ->with(['company_subscription', 'company_subscription_invoice'])
             ->find($id);
 
         if (!$transaction) {
@@ -818,11 +882,11 @@ class CompanySubscriptionTransactionController extends Controller
         try {
             $oldStatus = $transaction->status;
             $newStatus = $request->input('status');
+            $subscription = $transaction->company_subscription;
+            $invoice = $transaction->company_subscription_invoice;
 
             // Handle status change to "completed"
             if ($newStatus === 'completed' && $oldStatus !== 'completed') {
-                $subscription = $transaction->company_subscription;
-
                 // Calculate new dates if needed
                 if (!$transaction->next_expiry_date && $subscription->duration_type) {
                     $duration = $subscription->duration_type->duration ?? 1;
@@ -841,12 +905,29 @@ class CompanySubscriptionTransactionController extends Controller
                 $subscription->save();
             }
 
+            // Handle status change from "completed"
+            if ($oldStatus === 'completed' && $newStatus !== 'completed') {
+                // Revert subscription status if no other completed transactions
+                $completedTransactionsCount = CompanySubscriptionTransaction::where('company_subscription_id', $subscriptionId)
+                    ->where('status', 'completed')
+                    ->where('id', '!=', $id)
+                    ->count();
+
+                if ($completedTransactionsCount === 0) {
+                    $subscription->status = 'pending';
+                    $subscription->save();
+                }
+            }
+
             // Update transaction status
             $transaction->status = $newStatus;
             $transaction->save();
 
+            // Update invoice payment status
+            $this->updateInvoicePaymentStatus($invoice);
+
             // Load relationships
-            $transaction->load(['payment_method', 'branch', 'created_by', 'company_subscription.company']);
+            $transaction->load(['payment_method', 'branch', 'created_by', 'company_subscription.company', 'company_subscription_invoice']);
 
             // Commit transaction
             DB::commit();
@@ -966,8 +1047,6 @@ class CompanySubscriptionTransactionController extends Controller
                 }),
                 'billing_info' => [
                     'type' => $subscription->billing_type->key ?? 'unknown',
-                    'description' => $this->getBillingDescription($subscription),
-                    'calculated_amount_due' => $this->calculateAmountDue($subscription),
                 ]
             ];
 
@@ -986,59 +1065,55 @@ class CompanySubscriptionTransactionController extends Controller
     }
 
     /**
-     * Calculate amount due based on billing type
+     * Handle completed transaction
      */
-    private function calculateAmountDue(CompanySubscription $subscription)
+    private function handleCompletedTransaction($transaction, $subscription, $invoice)
     {
-        $billingTypeKey = $subscription->billing_type->key ?? 'unknown';
-
-        switch ($billingTypeKey) {
-            case 'per_pass':
-                // Count completed check-ins for this company subscription
-                $checkInCount = CompanySubscriptionMemberCheckIn::whereHas('company_subscription_member', function ($query) use ($subscription) {
-                    $query->where('company_subscription_id', $subscription->id);
-                })
-                    ->where('status', 'completed')
-                    ->count();
-
-                return $checkInCount * $subscription->unit_price;
-
-            case 'retail_fixed':
-                // Fixed price based on duration
-                $duration = $subscription->duration_type->duration ?? 1;
-                return $subscription->unit_price * $duration;
-
-            default:
-                return $subscription->unit_price;
+        // Update subscription end_date if next_expiry_date is set
+        if ($transaction->next_expiry_date) {
+            $subscription->end_date = $transaction->next_expiry_date;
         }
+
+        // Update subscription status
+        $subscription->status = 'in_progress';
+        $subscription->save();
     }
 
     /**
-     * Get billing description based on billing type
+     * Update invoice payment status based on transactions
      */
-    private function getBillingDescription(CompanySubscription $subscription)
+    private function updateInvoicePaymentStatus($invoice)
     {
-        $billingTypeKey = $subscription->billing_type->key ?? 'unknown';
-        $duration = $subscription->duration_type->duration ?? 1;
-        $unit = $subscription->duration_type->unit ?? 'days';
-        $unitPrice = $subscription->unit_price;
+        // Get all transactions for this invoice
+        $transactions = CompanySubscriptionTransaction::where('company_subscription_invoice_id', $invoice->id)
+            ->where('status', 'completed')
+            ->get();
 
-        switch ($billingTypeKey) {
-            case 'per_pass':
-                $checkInCount = CompanySubscriptionMemberCheckIn::whereHas('company_subscription_member', function ($query) use ($subscription) {
-                    $query->where('company_subscription_id', $subscription->id);
-                })
-                    ->where('status', 'completed')
-                    ->count();
+        $totalPaid = $transactions->sum('amount_paid');
+        $amountDue = $invoice->total_amount;
 
-                return "Per-Pass Billing: {$checkInCount} completed check-ins × {$unitPrice} = " . ($checkInCount * $unitPrice);
-
-            case 'retail_fixed':
-                return "Retail Fixed Billing: {$duration} {$unit} × {$unitPrice} = " . ($duration * $unitPrice);
-
-            default:
-                return "Standard Billing: {$unitPrice} per billing period";
+        // Determine invoice status
+        if ($totalPaid >= $amountDue) {
+            $invoice->status = 'paid';
+        } elseif ($totalPaid > 0 && $totalPaid < $amountDue) {
+            $invoice->status = 'partially_paid';
+        } else {
+            $invoice->status = 'pending';
         }
+
+        $invoice->save();
+    }
+
+    /**
+     * Generate transaction reference
+     */
+    private function generateTransactionReference()
+    {
+        $prefix = 'CTXN-';
+        $date = date('Ymd');
+        $random = strtoupper(substr(uniqid(), -6));
+
+        return $prefix . $date . '-' . $random;
     }
 
     /**

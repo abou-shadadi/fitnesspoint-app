@@ -11,13 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('check_in_methods', function (Blueprint $table) {
+        Schema::create('rate_types', function (Blueprint $table) {
             $table->id();
             $table->string('name');
             $table->string('description')->nullable();
-            $table->string('key')->unique()->nullable();
-
-            $table->boolean('require_file')->default(false);
             $table->enum('status', ['active', 'inactive'])->default('active');
             $table->timestamps();
         });
@@ -28,6 +25,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('check_in_methods');
+        Schema::dropIfExists('rate_types');
     }
 };

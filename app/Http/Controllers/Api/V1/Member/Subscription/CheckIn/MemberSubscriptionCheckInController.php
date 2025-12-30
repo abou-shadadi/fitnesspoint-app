@@ -139,20 +139,39 @@ class MemberSubscriptionCheckInController extends Controller
 
             $checkIns = $query->get();
 
-            // Calculate summary statistics
+            // Calculate summary statistics using Collection methods
+            // Calculate summary statistics using Collection methods
+            $today = now()->format('Y-m-d');
+            $startOfWeek = now()->startOfWeek();
+            $endOfWeek = now()->endOfWeek();
+            $startOfMonth = now()->startOfMonth();
+            $endOfMonth = now()->endOfMonth();
+
             $summary = [
                 'total_check_ins' => $checkIns->count(),
                 'completed_check_ins' => $checkIns->where('status', 'completed')->count(),
                 'failed_check_ins' => $checkIns->where('status', 'failed')->count(),
-                'today_check_ins' => $checkIns->whereDate('datetime', today())->count(),
-                'this_week_check_ins' => $checkIns->whereBetween('datetime', [
-                    now()->startOfWeek(),
-                    now()->endOfWeek()
-                ])->count(),
-                'this_month_check_ins' => $checkIns->whereBetween('datetime', [
-                    now()->startOfMonth(),
-                    now()->endOfMonth()
-                ])->count(),
+                'today_check_ins' => $checkIns->filter(function ($checkIn) use ($today) {
+                    // Convert string to Carbon if needed
+                    $date = is_string($checkIn->datetime)
+                        ? \Carbon\Carbon::parse($checkIn->datetime)
+                        : $checkIn->datetime;
+                    return $date->format('Y-m-d') === $today;
+                })->count(),
+                'this_week_check_ins' => $checkIns->filter(function ($checkIn) use ($startOfWeek, $endOfWeek) {
+                    // Convert string to Carbon if needed
+                    $date = is_string($checkIn->datetime)
+                        ? \Carbon\Carbon::parse($checkIn->datetime)
+                        : $checkIn->datetime;
+                    return $date >= $startOfWeek && $date <= $endOfWeek;
+                })->count(),
+                'this_month_check_ins' => $checkIns->filter(function ($checkIn) use ($startOfMonth, $endOfMonth) {
+                    // Convert string to Carbon if needed
+                    $date = is_string($checkIn->datetime)
+                        ? \Carbon\Carbon::parse($checkIn->datetime)
+                        : $checkIn->datetime;
+                    return $date >= $startOfMonth && $date <= $endOfMonth;
+                })->count(),
             ];
 
             return response()->json([
@@ -911,7 +930,6 @@ class MemberSubscriptionCheckInController extends Controller
             // Get file timestamps
             $metadata['file_created'] = date('Y-m-d H:i:s', filectime($image->getRealPath()));
             $metadata['file_modified'] = date('Y-m-d H:i:s', filemtime($image->getRealPath()));
-
         } catch (\Exception $e) {
             Log::warning('Failed to extract image metadata: ' . $e->getMessage());
             $metadata['image_processing_error'] = $e->getMessage();

@@ -19,7 +19,7 @@ return new class extends Migration
                 ->constrained('branches')
                 ->name('ms_checkin_branch_fk');
 
-            $table->string('signature')->nullable();
+            $table->longText('signature')->nullable();
 
             $table->json('metadata')->nullable();
 
@@ -30,6 +30,11 @@ return new class extends Migration
             $table->foreignId('member_subscription_id')
                 ->constrained()
                 ->name('ms_checkin_member_subscription_fk');
+
+                // created_by_id
+            $table->foreignId('created_by_id')
+                ->constrained('users')
+                ->name('ms_checkin_created_by_fk');
 
             $table->enum('status', ['completed', 'failed'])->default('completed');
 

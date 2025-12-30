@@ -15,6 +15,8 @@ return new class extends Migration
             $table->id();
             $table->foreignId('member_subscription_id')->constrained();
             $table->string('reference');
+            // member subscription invoice
+            $table->foreignId('member_subscription_invoice_id')->nullable()->constrained('member_subscription_invoices')->onDelete('cascade');
             $table->decimal('amount_due', 17, 2);
             $table->decimal('amount_paid', 17, 2);
             $table->timestamp('date');

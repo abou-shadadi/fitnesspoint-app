@@ -32,4 +32,8 @@ class CompanySubscriptionTransaction extends Model
         return $this->belongsTo(\App\Models\Company\CompanySubscription::class);
     }
 
+    public function company_subscription_invoice(){
+        return $this->belongsTo(\App\Models\Company\CompanySubscriptionInvoice::class);
+    }
+
 }

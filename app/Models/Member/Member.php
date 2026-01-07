@@ -34,49 +34,6 @@ class Member extends Model implements HasMedia
 		$this->attributes['phone'] = is_array($value) ? json_encode($value) : $value;
 	}
 
-    /**
-     * Get the province of the member.
-     */
-    public function province()
-    {
-        return $this->belongsTo(\App\Models\Location\Province::class);
-    }
-
-    /**
-     * Get the district of the member.
-     */
-    public function district()
-    {
-        return $this->belongsTo(\App\Models\Location\District::class);
-    }
-
-    /**
-     * Get the sector of the member.
-     */
-    public function sector()
-    {
-        return $this->belongsTo(\App\Models\Location\Sector::class);
-    }
-
-    /**
-     * Get the cell of the member.
-     */
-    public function cell()
-    {
-        return $this->belongsTo(\App\Models\Location\Cell::class);
-    }
-
-    /**
-     * Get the village of the member.
-     */
-    public function village()
-    {
-        return $this->belongsTo(\App\Models\Location\Village::class);
-    }
-
-    /**
-     * Get the previous qualifications of the member.
-     */
 
     public function user()
     {
@@ -96,12 +53,6 @@ class Member extends Model implements HasMedia
         // Return the URL of the media item if it exists, else return a default URL
         return $media ? $media->getUrl() : config('app.url') . '/images/user/avatar.png';
     }
-
-
-    // public function member_import_other_column_values()
-    // {
-    //     return $this->hasMany(MemberImportOtherColumnValue::class);
-    // }
 
 
     public function created_by()

@@ -5,7 +5,7 @@ namespace App\Models\Invoice;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class InvoiceTaxRate extends Model
+class TaxRate extends Model
 {
     use HasFactory;
     protected $guarded = [];

@@ -10,7 +10,7 @@ use App\Models\Company\CompanySubscriptionInvoice;
 use App\Models\Company\CompanySubscriptionInvoiceRecipient;
 use App\Models\Company\CompanySubscriptionMemberCheckIn;
 use App\Models\Rate\RateType;
-use App\Models\Invoice\InvoiceTaxRate;
+use App\Models\Invoice\TaxRate;
 use App\Models\Currency;
 use App\Models\User;
 use Illuminate\Support\Facades\Validator;
@@ -22,14 +22,13 @@ use Illuminate\Support\Facades\Storage;
 use App\Services\File\Base64Service;
 use Mpdf\Mpdf;
 use Illuminate\Support\Facades\Response;
+
 class CompanySubscriptionInvoiceController extends Controller
 {
-
     protected $base64Service;
 
     public function __construct(Base64Service $base64Service)
     {
-
         $this->base64Service = $base64Service;
     }
 
@@ -167,9 +166,10 @@ class CompanySubscriptionInvoiceController extends Controller
                 ->with([
                     'rate_type',
                     'tax_rate',
-                    'currency',
                     'company_subscription.billing_type',
-                    'company_subscription_invoice_recipients.company_administrator'
+                    'company_subscription_invoice_recipients.company_administrator',
+                    'company_subscription_invoice_bank_accounts.bank_account.bank', // Load bank account with bank
+                    'company_subscription_invoice_bank_accounts.bank_account.currency' // Load currency
                 ]);
 
             // Filter by status
@@ -212,7 +212,6 @@ class CompanySubscriptionInvoiceController extends Controller
                     ->sum('total_amount'),
             ];
 
-
             return response()->json([
                 'success' => true,
                 'message' => 'Invoices retrieved successfully',
@@ -225,7 +224,7 @@ class CompanySubscriptionInvoiceController extends Controller
                         'unit_price' => $subscription->unit_price,
                         'currency' => $subscription->currency->code ?? 'N/A',
                         'billing_type' => $subscription->billing_type->key ?? 'N/A',
-                        'billing_type' => $subscription->durationT_type->name ?? 'N/A',
+                        'duration_type' => $subscription->duration_type->name ?? 'N/A',
                         'status' => $subscription->status,
                     ]
                 ]
@@ -314,6 +313,15 @@ class CompanySubscriptionInvoiceController extends Controller
      *                         @OA\Property(property="company_administrator_id", type="integer", example=1),
      *                         @OA\Property(property="is_primary", type="boolean", example=true)
      *                     )
+     *                 ),
+     *                 @OA\Property(
+     *                     property="bank_accounts",
+     *                     type="array",
+     *                     @OA\Items(
+     *                         type="integer",
+     *                         example=1
+     *                     ),
+     *                     description="Array of bank account IDs"
      *                 )
      *             )
      *         )
@@ -357,7 +365,7 @@ class CompanySubscriptionInvoiceController extends Controller
             // Validate request
             $validator = Validator::make($request->all(), [
                 'rate_type_id' => 'required|exists:rate_types,id',
-                'tax_rate_id' => 'required|exists:invoice_tax_rates,id',
+                'tax_rate_id' => 'required|exists:tax_rates,id',
                 'due_date' => 'required|date',
                 'invoice_date' => 'required|date',
                 'discount_amount' => 'nullable|numeric|min:0',
@@ -367,6 +375,8 @@ class CompanySubscriptionInvoiceController extends Controller
                 'recipients' => 'nullable|array',
                 'recipients.*.company_administrator_id' => 'required_with:recipients|exists:users,id',
                 'recipients.*.is_primary' => 'required_with:recipients|boolean',
+                'bank_accounts' => 'nullable|array',
+                'bank_accounts.*' => 'integer|exists:bank_accounts,id',
             ]);
 
             if ($validator->fails()) {
@@ -389,7 +399,7 @@ class CompanySubscriptionInvoiceController extends Controller
             }
 
             // Verify tax rate exists
-            $taxRate = InvoiceTaxRate::find($request->tax_rate_id);
+            $taxRate = TaxRate::find($request->tax_rate_id);
             if (!$taxRate) {
                 return response()->json([
                     'success' => false,
@@ -426,7 +436,6 @@ class CompanySubscriptionInvoiceController extends Controller
             if ($subscription->billing_type->key === 'retail_fixed') {
                 $amount = $subscription->unit_price;
                 $totalMemberCheckIns = 0;
-                 $totalMemberCheckIns = $this->calculatePerPassCheckIns($subscriptionId, $fromDate, $toDate);
             } else if ($subscription->billing_type->key === 'per_pass') {
                 // Calculate total unique members per day within the date range
                 $totalMemberCheckIns = $this->calculatePerPassCheckIns($subscriptionId, $fromDate, $toDate);
@@ -452,16 +461,11 @@ class CompanySubscriptionInvoiceController extends Controller
             // Calculate total amount
             $totalAmount = $amount + $taxAmount - $discountAmount;
 
-            // Process file if provided
-            $filePath = null;
-
-
             // Create invoice
             $invoice = CompanySubscriptionInvoice::create([
                 'reference' => $reference,
                 'company_subscription_id' => $subscriptionId,
                 'rate_type_id' => $request->rate_type_id,
-                'currency_id' => $subscription->currency_id, // Get currency from subscription
                 'tax_rate_id' => $request->tax_rate_id,
                 'from_date' => $fromDate,
                 'to_date' => $toDate,
@@ -476,7 +480,7 @@ class CompanySubscriptionInvoiceController extends Controller
                 'status' => 'pending',
             ]);
 
-            // hanlede base 64
+            // Handle base64 file upload
             if ($request->has('file') && $request->file) {
                 $this->base64Service->processBase64File($invoice, $request->file, 'file');
             }
@@ -492,19 +496,27 @@ class CompanySubscriptionInvoiceController extends Controller
                 }
             }
 
+            // Add bank accounts if provided
+            if ($request->has('bank_accounts') && is_array($request->bank_accounts)) {
+                foreach ($request->bank_accounts as $bankAccountId) {
+                    \App\Models\Company\CompanySubscriptionInvoiceBankAccount::create([
+                        'company_subscription_invoice_id' => $invoice->id,
+                        'bank_account_id' => $bankAccountId,
+                        'status' => 'active', // All provided IDs get active status
+                    ]);
+                }
+            }
+
             // Load relationships
             $invoice->load([
                 'rate_type',
                 'tax_rate',
-                'currency',
+                'company_subscription.currency',
                 'company_subscription.billing_type',
-                'company_subscription_invoice_recipients.company_administrator'
+                'company_subscription_invoice_recipients.company_administrator',
+                'company_subscription_invoice_bank_accounts.bank_account.bank',
+                'company_subscription_invoice_bank_accounts.bank_account.currency'
             ]);
-
-            // Add file URL if exists
-            if ($invoice->file) {
-                $invoice->file_url = Storage::url($invoice->file);
-            }
 
             // Commit transaction
             DB::commit();
@@ -590,9 +602,11 @@ class CompanySubscriptionInvoiceController extends Controller
                 ->with([
                     'rate_type',
                     'tax_rate',
-                    'currency',
+                    'company_subscription.currency',
                     'company_subscription.billing_type',
-                    'company_subscription_invoice_recipients.company_administrator'
+                    'company_subscription_invoice_recipients.company_administrator',
+                    'company_subscription_invoice_bank_accounts.bank_account.bank',
+                    'company_subscription_invoice_bank_accounts.bank_account.currency'
                 ])
                 ->find($id);
 
@@ -603,6 +617,7 @@ class CompanySubscriptionInvoiceController extends Controller
                     'data' => null
                 ], 404);
             }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Invoice retrieved successfully',
@@ -703,6 +718,15 @@ class CompanySubscriptionInvoiceController extends Controller
      *                         @OA\Property(property="company_administrator_id", type="integer", example=1),
      *                         @OA\Property(property="is_primary", type="boolean", example=true)
      *                     )
+     *                 ),
+     *                 @OA\Property(
+     *                     property="bank_accounts",
+     *                     type="array",
+     *                     @OA\Items(
+     *                         type="integer",
+     *                         example=1
+     *                     ),
+     *                     description="Array of bank account IDs"
      *                 )
      *             )
      *         )
@@ -744,7 +768,7 @@ class CompanySubscriptionInvoiceController extends Controller
             // Validate request
             $validator = Validator::make($request->all(), [
                 'rate_type_id' => 'nullable|exists:rate_types,id',
-                'tax_rate_id' => 'nullable|exists:invoice_tax_rates,id',
+                'tax_rate_id' => 'nullable|exists:tax_rates,id',
                 'due_date' => 'nullable|date',
                 'invoice_date' => 'nullable|date',
                 'discount_amount' => 'nullable|numeric|min:0',
@@ -758,6 +782,8 @@ class CompanySubscriptionInvoiceController extends Controller
                 'recipients' => 'nullable|array',
                 'recipients.*.company_administrator_id' => 'required_with:recipients|exists:users,id',
                 'recipients.*.is_primary' => 'required_with:recipients|boolean',
+                'bank_accounts' => 'nullable|array',
+                'bank_accounts.*' => 'integer|exists:bank_accounts,id',
             ]);
 
             if ($validator->fails()) {
@@ -780,7 +806,7 @@ class CompanySubscriptionInvoiceController extends Controller
                 $updateData['tax_rate_id'] = $request->tax_rate_id;
                 // Recalculate tax if tax rate changed
                 if ($invoice->tax_rate_id != $request->tax_rate_id) {
-                    $taxRate = InvoiceTaxRate::find($request->tax_rate_id);
+                    $taxRate = TaxRate::find($request->tax_rate_id);
                     $updateData['tax_amount'] = $invoice->amount * ($taxRate->rate / 100);
                 }
             }
@@ -812,7 +838,7 @@ class CompanySubscriptionInvoiceController extends Controller
 
             // Process file if provided
             if ($request->has('file') && $request->file) {
-                // Delete old file if exist
+                // Delete old file and upload new one
                 $this->base64Service->processBase64File($invoice, $request->file, 'file', true);
             }
 
@@ -841,13 +867,20 @@ class CompanySubscriptionInvoiceController extends Controller
                 }
             }
 
+            // Handle bank accounts update
+            if ($request->has('bank_accounts')) {
+                $this->updateInvoiceBankAccounts($invoice->id, $request->bank_accounts);
+            }
+
             // Load relationships
             $invoice->load([
                 'rate_type',
                 'tax_rate',
-                'currency',
+                'company_subscription.currency',
                 'company_subscription.billing_type',
-                'company_subscription_invoice_recipients.company_administrator'
+                'company_subscription_invoice_recipients.company_administrator',
+                'company_subscription_invoice_bank_accounts.bank_account.bank',
+                'company_subscription_invoice_bank_accounts.bank_account.currency'
             ]);
 
             // Commit transaction
@@ -933,6 +966,9 @@ class CompanySubscriptionInvoiceController extends Controller
             // Delete recipients
             CompanySubscriptionInvoiceRecipient::where('company_subscription_invoice_id', $invoice->id)->delete();
 
+            // Delete bank accounts
+            \App\Models\Company\CompanySubscriptionInvoiceBankAccount::where('company_subscription_invoice_id', $invoice->id)->delete();
+
             // Delete invoice
             $invoice->delete();
 
@@ -954,9 +990,7 @@ class CompanySubscriptionInvoiceController extends Controller
         }
     }
 
-
-
-     /**
+    /**
      * @OA\Get(
      *     path="/api/companies/{companyId}/subscriptions/{subscriptionId}/invoices/{id}/export",
      *     summary="Export invoice to PDF",
@@ -1027,11 +1061,13 @@ class CompanySubscriptionInvoiceController extends Controller
                 ->with([
                     'rate_type',
                     'tax_rate',
-                    'currency',
+                    'company_subscription.currency',
                     'company_subscription.billing_type',
                     'company_subscription.duration_type',
                     'company_subscription.company',
-                    'company_subscription_invoice_recipients.company_administrator'
+                    'company_subscription_invoice_recipients.company_administrator',
+                    'company_subscription_invoice_bank_accounts.bank_account.bank',
+                    'company_subscription_invoice_bank_accounts.bank_account.currency'
                 ])
                 ->find($id);
 
@@ -1072,7 +1108,6 @@ class CompanySubscriptionInvoiceController extends Controller
                 'is_paid' => $invoice->status === 'paid',
                 'is_partially_paid' => $invoice->status === 'partially_paid',
                 'is_overdue' => $invoice->status === 'overdue',
-                'currency_symbol' => $this->getCurrencySymbol($invoice->currency),
             ];
 
             $format = $request->input('format', 'pdf');
@@ -1095,7 +1130,93 @@ class CompanySubscriptionInvoiceController extends Controller
     }
 
     /**
-     * Generate check-in summary for per-pass billing
+     * Generate a unique invoice reference
+     */
+    private function generateInvoiceReference()
+    {
+        $prefix = 'INV';
+        $year = date('Y');
+        $month = date('m');
+
+        // Get the last invoice reference for the current year and month
+        $lastInvoice = CompanySubscriptionInvoice::where('reference', 'like', $prefix . '-' . $year . $month . '-%')
+            ->orderBy('reference', 'desc')
+            ->first();
+
+        if ($lastInvoice) {
+            // Extract the sequence number and increment it
+            $parts = explode('-', $lastInvoice->reference);
+            $lastNumber = (int) end($parts);
+            $sequence = str_pad($lastNumber + 1, 5, '0', STR_PAD_LEFT);
+        } else {
+            $sequence = '00001';
+        }
+
+        return $prefix . '-' . $year . $month . '-' . $sequence;
+    }
+
+    /**
+     * Calculate per-pass check-ins for a subscription period
+     */
+    private function calculatePerPassCheckIns($subscriptionId, $fromDate, $toDate)
+    {
+        // Get unique members who checked in per day within the date range
+        $checkIns = CompanySubscriptionMemberCheckIn::whereHas('company_subscription_member', function ($query) use ($subscriptionId) {
+                $query->where('company_subscription_id', $subscriptionId);
+            })
+            ->where('status', 'completed')
+            ->whereBetween('datetime', [$fromDate, $toDate])
+            ->get();
+
+        // Group by date and member to count unique members per day
+        $dailyMemberCounts = [];
+
+        foreach ($checkIns as $checkIn) {
+            $date = Carbon::parse($checkIn->datetime)->format('Y-m-d');
+            $memberId = $checkIn->company_subscription_member->member_id;
+
+            if (!isset($dailyMemberCounts[$date])) {
+                $dailyMemberCounts[$date] = [];
+            }
+
+            if (!in_array($memberId, $dailyMemberCounts[$date])) {
+                $dailyMemberCounts[$date][] = $memberId;
+            }
+        }
+
+        // Sum up unique members per day
+        $totalMemberCheckIns = 0;
+        foreach ($dailyMemberCounts as $date => $members) {
+            $totalMemberCheckIns += count($members);
+        }
+
+        return $totalMemberCheckIns;
+    }
+
+    /**
+     * Calculate discount amount based on type
+     */
+    private function calculateDiscount($amount, $typeId, $baseAmount)
+    {
+        if (!$amount || $amount <= 0) {
+            return 0;
+        }
+
+        // Assuming typeId 1 = percentage, typeId 2 = fixed amount
+        if ($typeId == 1) { // Percentage
+            // Ensure percentage is between 0 and 100
+            $percentage = min(100, max(0, $amount));
+            return ($baseAmount * $percentage) / 100;
+        } elseif ($typeId == 2) { // Fixed amount
+            // Ensure discount doesn't exceed base amount
+            return min($baseAmount, $amount);
+        }
+
+        return 0;
+    }
+
+    /**
+     * Get check-in summary for per-pass billing
      */
     private function getCheckInSummary($subscriptionId, $fromDate, $toDate)
     {
@@ -1152,6 +1273,53 @@ class CompanySubscriptionInvoiceController extends Controller
     }
 
     /**
+     * Update invoice bank accounts based on provided IDs
+     *
+     * @param int $invoiceId
+     * @param array $providedBankAccountIds
+     * @return void
+     */
+    private function updateInvoiceBankAccounts($invoiceId, array $providedBankAccountIds)
+    {
+        // Get all existing bank accounts for this invoice
+        $existingBankAccounts = \App\Models\Company\CompanySubscriptionInvoiceBankAccount::where('company_subscription_invoice_id', $invoiceId)->get();
+
+        // Track which bank accounts already exist
+        $existingBankAccountMap = [];
+        foreach ($existingBankAccounts as $bankAccount) {
+            $existingBankAccountMap[$bankAccount->bank_account_id] = $bankAccount;
+        }
+
+        // Process provided bank account IDs
+        foreach ($providedBankAccountIds as $bankAccountId) {
+            if (isset($existingBankAccountMap[$bankAccountId])) {
+                // Bank account already exists, update status to active
+                $existingBankAccountMap[$bankAccountId]->update([
+                    'status' => 'active'
+                ]);
+
+                // Remove from map so we know it was handled
+                unset($existingBankAccountMap[$bankAccountId]);
+            } else {
+                // New bank account, create with active status
+                \App\Models\Company\CompanySubscriptionInvoiceBankAccount::create([
+                    'company_subscription_invoice_id' => $invoiceId,
+                    'bank_account_id' => $bankAccountId,
+                    'status' => 'active',
+                ]);
+            }
+        }
+
+        // Any remaining bank accounts in the map were not provided in the request
+        // Mark them as inactive instead of deleting
+        foreach ($existingBankAccountMap as $bankAccount) {
+            $bankAccount->update([
+                'status' => 'inactive'
+            ]);
+        }
+    }
+
+    /**
      * Generate PDF using mPDF
      */
     private function generateInvoicePdf($data)
@@ -1205,7 +1373,7 @@ class CompanySubscriptionInvoiceController extends Controller
     private function getCurrencySymbol($currency)
     {
         if (!$currency) {
-            return 'FRW'; // Default to USD symbol
+            return 'FRW'; // Default to FRW (Rwandan Franc)
         }
 
         $symbols = [
@@ -1215,6 +1383,8 @@ class CompanySubscriptionInvoiceController extends Controller
             'KES' => 'KSh',
             'TZS' => 'TSh',
             'UGX' => 'USh',
+            'RWF' => 'FRW',
+            'FRW' => 'FRW',
         ];
 
         return $symbols[$currency->code] ?? $currency->code;

@@ -7,20 +7,29 @@ use Illuminate\Database\Eloquent\Model;
 
 class MemberImportLog extends Model
 {
+    use HasFactory;
+
     protected $fillable = [
         'log_message',
-        'student_import_id',
+        'member_import_id',
         'is_resolved',
         'data',
     ];
 
     protected $casts = [
-        'data' => 'json',
+        'data' => 'array',
+        'is_resolved' => 'boolean',
     ];
 
-
-    public function student_import()
+    // Relationships
+    public function member_import()
     {
         return $this->belongsTo(MemberImport::class);
+    }
+
+    // Accessors
+    public function getFormattedDataAttribute()
+    {
+        return $this->data ? json_encode($this->data, JSON_PRETTY_PRINT) : null;
     }
 }

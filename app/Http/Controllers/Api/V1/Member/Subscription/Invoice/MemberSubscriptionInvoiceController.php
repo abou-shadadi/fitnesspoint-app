@@ -9,7 +9,7 @@ use App\Models\Member\MemberSubscription;
 use App\Models\Member\MemberSubscriptionInvoice;
 use App\Models\Member\MemberSubscriptionCheckIn;
 use App\Models\Rate\RateType;
-use App\Models\Invoice\InvoiceTaxRate;
+use App\Models\Invoice\TaxRate;
 use App\Models\Discount\DiscountType;
 use App\Models\Plan\Plan;
 use Illuminate\Validation\Rule;
@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use App\Services\File\Base64Service;
 use Carbon\Carbon;
+use Mpdf\Mpdf;
 
 class MemberSubscriptionInvoiceController extends Controller
 {
@@ -312,7 +313,7 @@ class MemberSubscriptionInvoiceController extends Controller
         }
 
         // Verify tax rate exists
-        $taxRate = InvoiceTaxRate::find($request->input('tax_rate_id'));
+        $taxRate = TaxRate::find($request->input('tax_rate_id'));
         if (!$taxRate) {
             return response()->json([
                 'success' => false,
@@ -352,7 +353,7 @@ class MemberSubscriptionInvoiceController extends Controller
         DB::beginTransaction();
 
         try {
-            // Calculate amount based on plan price and duration
+            // Calculate amount - just use plan price directly (no multiplication)
             $amount = $this->calculateSubscriptionAmount($subscription);
 
             // Calculate tax amount
@@ -390,6 +391,7 @@ class MemberSubscriptionInvoiceController extends Controller
                 'invoice_date' => $request->input('invoice_date'),
                 'notes' => $request->input('notes'),
                 'total_check_ins' => $totalCheckIns,
+                'discount_type_id' => $request->input('discount_type_id'),
                 'status' => 'pending',
                 'is_sent' => false,
             ]);
@@ -575,7 +577,7 @@ class MemberSubscriptionInvoiceController extends Controller
 
             // Update tax rate if provided
             if ($request->has('tax_rate_id')) {
-                $taxRate = InvoiceTaxRate::find($request->input('tax_rate_id'));
+                $taxRate = TaxRate::find($request->input('tax_rate_id'));
                 if (!$taxRate) {
                     DB::rollBack();
                     return response()->json([
@@ -851,48 +853,108 @@ class MemberSubscriptionInvoiceController extends Controller
     }
 
     /**
-     * Calculate subscription amount based on plan and duration
+     * @OA\Get(
+     *     path="/api/members/{memberId}/subscriptions/{subscriptionId}/invoices/{invoiceId}/export",
+     *     summary="Export invoice to PDF",
+     *     tags={"Members | Subscription Invoices"},
+     *     security={{"sanctum":{}}},
+     *     @OA\Parameter(
+     *         name="memberId",
+     *         in="path",
+     *         required=true,
+     *         @OA\Schema(type="integer")
+     *     ),
+     *     @OA\Parameter(
+     *         name="subscriptionId",
+     *         in="path",
+     *         required=true,
+     *         @OA\Schema(type="integer")
+     *     ),
+     *     @OA\Parameter(
+     *         name="invoiceId",
+     *         in="path",
+     *         required=true,
+     *         @OA\Schema(type="integer")
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="PDF file download",
+     *         @OA\MediaType(
+     *             mediaType="application/pdf",
+     *             @OA\Schema(type="string", format="binary")
+     *         )
+     *     ),
+     *     @OA\Response(response=404, description="Invoice not found"),
+     *     @OA\Response(response=500, description="Internal server error")
+     * )
+     */
+    public function export($memberId, $subscriptionId, $invoiceId)
+    {
+        try {
+            // Verify member exists
+            $member = Member::find($memberId);
+            if (!$member) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Member not found',
+                    'data' => null
+                ], 404);
+            }
+
+            // Verify subscription exists and belongs to member
+            $subscription = MemberSubscription::where('member_id', $memberId)
+                ->with(['plan', 'branch', 'created_by'])
+                ->find($subscriptionId);
+
+            if (!$subscription) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Member subscription not found',
+                    'data' => null
+                ], 404);
+            }
+
+            // Get invoice with relationships
+            $invoice = MemberSubscriptionInvoice::where('member_subscription_id', $subscriptionId)
+                ->with([
+                    'rate_type',
+                    'tax_rate',
+                    'member_subscription.plan',
+                    'member_subscription.member'
+                ])
+                ->find($invoiceId);
+
+            if (!$invoice) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invoice not found',
+                    'data' => null
+                ], 404);
+            }
+
+            // Generate PDF
+            return $this->generateInvoicePdf($invoice, $subscription, $member);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'data' => null
+            ], 500);
+        }
+    }
+
+
+    /**
+     * Calculate subscription amount - just return the plan price as-is
+     * The plan price in the seeder is already the total price for the duration
+     * (e.g., 80,000 for 1 month, 220,000 for 3 months)
      */
     private function calculateSubscriptionAmount($subscription)
     {
         $plan = $subscription->plan;
-        $durationType = $plan->duration_type;
-        $duration = $plan->duration;
 
-        // Calculate based on duration type
-        switch ($durationType->unit) {
-            case 'days':
-                // For daily plans, multiply by number of days
-                $start = Carbon::parse($subscription->start_date);
-                $end = Carbon::parse($subscription->end_date);
-                $days = $start->diffInDays($end);
-                return $plan->price * $days;
-
-            case 'weeks':
-                // For weekly plans, multiply by number of weeks
-                $start = Carbon::parse($subscription->start_date);
-                $end = Carbon::parse($subscription->end_date);
-                $weeks = $start->diffInWeeks($end);
-                return $plan->price * $weeks;
-
-            case 'months':
-                // For monthly plans, multiply by number of months
-                $start = Carbon::parse($subscription->start_date);
-                $end = Carbon::parse($subscription->end_date);
-                $months = $start->diffInMonths($end);
-                return $plan->price * $months;
-
-            case 'years':
-                // For yearly plans, multiply by number of years
-                $start = Carbon::parse($subscription->start_date);
-                $end = Carbon::parse($subscription->end_date);
-                $years = $start->diffInYears($end);
-                return $plan->price * $years;
-
-            default:
-                // Default to plan price
-                return $plan->price;
-        }
+        // Just return the plan price directly - it's already the total for the duration
+        return $plan->price;
     }
 
     /**
@@ -949,5 +1011,58 @@ class MemberSubscriptionInvoiceController extends Controller
         $random = str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
 
         return "INV-{$date}-MS{$subscriptionId}-{$random}";
+    }
+
+    /**
+     * Generate PDF for a single invoice
+     */
+    private function generateInvoicePdf($invoice, $subscription, $member)
+    {
+        $fileName = 'invoice_' . $invoice->reference . '_' . date('Ymd_His') . '.pdf';
+
+        // Render Blade template
+        $html = view('exports.member.invoice.general-invoice', [
+            'invoice' => $invoice,
+            'subscription' => $subscription,
+            'member' => $member,
+            'generated_at' => now()->format('Y-m-d H:i:s'),
+        ])->render();
+
+        // Create mPDF instance
+        $mpdf = new Mpdf([
+            'mode' => 'utf-8',
+            'format' => 'A4',
+            'default_font_size' => 10,
+            'default_font' => 'dejavusans', // Supports UTF-8
+            'margin_left' => 15,
+            'margin_right' => 15,
+            'margin_top' => 20,
+            'margin_bottom' => 20,
+            'margin_header' => 5,
+            'margin_footer' => 5,
+        ]);
+
+        // Set document information
+        $mpdf->SetTitle('Invoice ' . $invoice->reference);
+        $mpdf->SetAuthor('System');
+        $mpdf->SetCreator('Member Subscription System');
+
+        // Add header
+        $mpdf->SetHTMLHeader('
+    <div style="text-align: center; border-bottom: 1px solid #ddd; padding-bottom: 5px; margin-bottom: 10px;">
+        <span style="font-size: 12px; color: #666;">Invoice ' . $invoice->reference . ' - ' . $member->name . '</span>
+    </div>');
+
+        // Add footer with page numbers
+        $mpdf->SetHTMLFooter('
+    <div style="text-align: center; font-size: 9px; color: #666; border-top: 1px solid #ddd; padding-top: 5px;">
+        Page {PAGENO} of {nbpg} | Generated on ' . now()->format('Y-m-d H:i:s') . '
+    </div>');
+
+        // Write HTML content
+        $mpdf->WriteHTML($html);
+
+        // Output PDF for download
+        return $mpdf->Output($fileName, 'D');
     }
 }

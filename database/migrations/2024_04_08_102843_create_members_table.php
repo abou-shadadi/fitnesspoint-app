@@ -22,11 +22,7 @@ return new class extends Migration
             $table->string('national_id_number')->nullable();
             $table->json('phone')->nullable();
             $table->string('email')->nullable()->unique();
-            $table->foreignId('province_id')->nullable()->constrained();
-            $table->foreignId('district_id')->nullable()->constrained();
-            $table->foreignId('sector_id')->nullable()->constrained();
-            $table->foreignId('cell_id')->nullable()->constrained();
-            $table->foreignId('village_id')->nullable()->constrained();
+            $table->text('address')->nullable();
             $table->foreignId('created_by_id')->nullable()->constrained('users');
             $table->enum('status', ['active', 'inactive'])->default('active');
             $table->timestamps();

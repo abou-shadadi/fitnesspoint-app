@@ -7,27 +7,48 @@ use Illuminate\Database\Eloquent\Model;
 
 class MemberImport extends Model
 {
-    protected $guarded = [];
     use HasFactory;
 
+    protected $guarded = [];
 
-    // append the file path
+    protected $casts = [
+        'data' => 'array',
+    ];
 
-
-
+    // Relationships
     public function user()
     {
-        return $this->belongsTo(\App\Models\User::class);
+        return $this->belongsTo(\App\Models\User::class, 'created_by_id');
     }
 
+    public function company()
+    {
+        return $this->belongsTo(\App\Models\Company\Company::class);
+    }
 
-    // public function filePathAttribute()
-    // {
-    //     return Storage::url($this->file);
-    // }
+    public function branch()
+    {
+        return $this->belongsTo(\App\Models\Branch\Branch::class);
+    }
 
+    public function member_import_logs()
+    {
+        return $this->hasMany(MemberImportLog::class);
+    }
 
-    public function import_logs(){
-        return $this->hasMany(\App\Models\Member\MemberImportLog::class);
+    // Accessors
+    public function getFileUrlAttribute()
+    {
+        return $this->file ? storage_path('app/' . $this->file) : null;
+    }
+
+    public function getFailedImportFileUrlAttribute()
+    {
+        return $this->failed_import_file ? storage_path('app/' . $this->failed_import_file) : null;
+    }
+
+    public function getImportedFileUrlAttribute()
+    {
+        return $this->imported_file ? storage_path('app/' . $this->imported_file) : null;
     }
 }

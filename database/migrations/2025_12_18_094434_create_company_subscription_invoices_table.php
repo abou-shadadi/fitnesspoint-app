@@ -24,7 +24,11 @@ return new class extends Migration
             $table->decimal('tax_amount', 10, 2)->default(0);
             $table->decimal('discount_amount', 10, 2)->default(0);
             $table->decimal('total_amount', 10, 2);
+            $table->decimal('amount_paid', 10, 2)->default(0);
+            $table->decimal('remaining_amount', 10, 2)->default(0);
+            $table->string('payment_percentage')->default(0);
             $table->date('invoice_date');
+            $table->date('payment_date')->nullable();
             $table->boolean('is_sent')->default(false);
             $table->string('file')->nullable();
             $table->text('notes')->nullable();

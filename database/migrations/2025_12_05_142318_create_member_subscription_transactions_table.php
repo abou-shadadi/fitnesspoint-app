@@ -13,21 +13,41 @@ return new class extends Migration
     {
         Schema::create('member_subscription_transactions', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('member_subscription_id')->constrained();
+
+            $table->foreignId('member_subscription_id')
+                ->constrained()
+                ->cascadeOnDelete();
+
             $table->string('reference');
-            // member subscription invoice
-            $table->foreignId('member_subscription_invoice_id')->nullable()->constrained('member_subscription_invoices')->onDelete('cascade');
+
+            $table->unsignedBigInteger('member_subscription_invoice_id');
+            $table->foreign('member_subscription_invoice_id', 'ms_trans_invoice_fk')
+                ->references('id')
+                ->on('member_subscription_invoices')
+                ->cascadeOnDelete();
+
             $table->decimal('amount_due', 17, 2);
             $table->decimal('amount_paid', 17, 2);
             $table->timestamp('date');
+
             $table->foreignId('payment_method_id')->constrained();
             $table->foreignId('created_by_id')->constrained('users');
             $table->foreignId('branch_id')->constrained('branches');
+
             $table->string('attachment')->nullable();
             $table->timestamp('current_expiry_date')->nullable();
             $table->timestamp('next_expiry_date')->nullable();
             $table->text('notes')->nullable();
-            $table->enum('status', ['pending', 'completed', 'failed', 'cancelled', 'refunded', 'rejected'])->default('pending');
+
+            $table->enum('status', [
+                'pending',
+                'completed',
+                'failed',
+                'cancelled',
+                'refunded',
+                'rejected'
+            ])->default('pending');
+
             $table->timestamps();
         });
     }

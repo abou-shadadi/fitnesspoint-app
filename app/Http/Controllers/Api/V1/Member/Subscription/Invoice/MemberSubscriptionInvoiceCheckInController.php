@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Api\V1\Member\Subscription\Invoice\CheckIn;
+namespace App\Http\Controllers\Api\V1\Member\Subscription\Invoice;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;

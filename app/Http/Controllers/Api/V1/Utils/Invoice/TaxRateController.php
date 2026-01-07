@@ -4,16 +4,16 @@ namespace App\Http\Controllers\Api\V1\Utils\Invoice;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Models\Invoice\InvoiceTaxRate;
+use App\Models\Invoice\TaxRate;
 use App\Models\Rate\RateType;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
-class InvoiceTaxRateController extends Controller
+class TaxRateController extends Controller
 {
     /**
      * @OA\Get(
-     *     path="/api/utils/invoice-tax-rates",
+     *     path="/api/utils/tax-rates",
      *     summary="Get all invoice tax rates",
      *     tags={"Utils | Invoice Tax Rates"},
      *     security={{"sanctum":{}}},
@@ -117,7 +117,7 @@ class InvoiceTaxRateController extends Controller
     public function index(Request $request)
     {
         try {
-            $query = InvoiceTaxRate::with('rate_type');
+            $query = TaxRate::with('rate_type');
 
             // Filter by status
             if ($request->has('status') && in_array($request->status, ['active', 'inactive'])) {
@@ -149,7 +149,7 @@ class InvoiceTaxRateController extends Controller
             $taxRates = $query->paginate($perPage);
 
             // Get summary statistics
-            $allTaxRates = InvoiceTaxRate::when($request->has('status'), function ($q) use ($request) {
+            $allTaxRates = TaxRate::when($request->has('status'), function ($q) use ($request) {
                 $q->where('status', $request->status);
             })->when($request->has('rate_type_id'), function ($q) use ($request) {
                 $q->where('rate_type_id', $request->rate_type_id);
@@ -193,7 +193,7 @@ class InvoiceTaxRateController extends Controller
 
     /**
      * @OA\Post(
-     *     path="/api/utils/invoice-tax-rates",
+     *     path="/api/utils/tax-rates",
      *     summary="Create a new invoice tax rate",
      *     tags={"Utils | Invoice Tax Rates"},
      *     security={{"sanctum":{}}},
@@ -226,7 +226,7 @@ class InvoiceTaxRateController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'name' => 'required|string|max:255|unique:invoice_tax_rates,name',
+                'name' => 'required|string|max:255|unique:tax_rates,name',
                 'description' => 'nullable|string|max:500',
                 'rate_type_id' => 'required|exists:rate_types,id',
                 'rate' => 'required|numeric|min:0|max:100',
@@ -252,7 +252,7 @@ class InvoiceTaxRateController extends Controller
                 ], 404);
             }
 
-            $taxRate = InvoiceTaxRate::create([
+            $taxRate = TaxRate::create([
                 'name' => $request->name,
                 'description' => $request->description,
                 'rate_type_id' => $request->rate_type_id,
@@ -279,7 +279,7 @@ class InvoiceTaxRateController extends Controller
 
     /**
      * @OA\Get(
-     *     path="/api/utils/invoice-tax-rates/{id}",
+     *     path="/api/utils/tax-rates/{id}",
      *     summary="Get a specific invoice tax rate",
      *     tags={"Utils | Invoice Tax Rates"},
      *     security={{"sanctum":{}}},
@@ -305,7 +305,7 @@ class InvoiceTaxRateController extends Controller
     public function show($id)
     {
         try {
-            $taxRate = InvoiceTaxRate::with('rate_type')->find($id);
+            $taxRate = TaxRate::with('rate_type')->find($id);
 
             if (!$taxRate) {
                 return response()->json([
@@ -331,7 +331,7 @@ class InvoiceTaxRateController extends Controller
 
     /**
      * @OA\Put(
-     *     path="/api/utils/invoice-tax-rates/{id}",
+     *     path="/api/utils/tax-rates/{id}",
      *     summary="Update an invoice tax rate",
      *     tags={"Utils | Invoice Tax Rates"},
      *     security={{"sanctum":{}}},
@@ -368,7 +368,7 @@ class InvoiceTaxRateController extends Controller
     public function update(Request $request, $id)
     {
         try {
-            $taxRate = InvoiceTaxRate::find($id);
+            $taxRate = TaxRate::find($id);
 
             if (!$taxRate) {
                 return response()->json([
@@ -383,7 +383,7 @@ class InvoiceTaxRateController extends Controller
                     'required',
                     'string',
                     'max:255',
-                    Rule::unique('invoice_tax_rates', 'name')->ignore($taxRate->id)
+                    Rule::unique('tax_rates', 'name')->ignore($taxRate->id)
                 ],
                 'description' => 'nullable|string|max:500',
                 'rate_type_id' => 'required|exists:rate_types,id',
@@ -440,7 +440,7 @@ class InvoiceTaxRateController extends Controller
 
     /**
      * @OA\Delete(
-     *     path="/api/utils/invoice-tax-rates/{id}",
+     *     path="/api/utils/tax-rates/{id}",
      *     summary="Delete an invoice tax rate",
      *     tags={"Utils | Invoice Tax Rates"},
      *     security={{"sanctum":{}}},
@@ -466,7 +466,7 @@ class InvoiceTaxRateController extends Controller
     public function destroy($id)
     {
         try {
-            $taxRate = InvoiceTaxRate::find($id);
+            $taxRate = TaxRate::find($id);
 
             if (!$taxRate) {
                 return response()->json([

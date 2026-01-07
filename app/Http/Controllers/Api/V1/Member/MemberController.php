@@ -24,14 +24,14 @@ class MemberController extends Controller
      *     path="/api/members",
      *     operationId="getMembersList",
      *     tags={"Members"},
-     *     summary="List members with optional location filtering",
+     *     summary="List members with optional filtering",
      *     security={{"sanctum":{}}},
-     *     @OA\Parameter(name="province_id", in="query", description="Filter by province", @OA\Schema(type="integer")),
-     *     @OA\Parameter(name="district_id", in="query", description="Filter by district", @OA\Schema(type="integer")),
-     *     @OA\Parameter(name="sector_id", in="query", description="Filter by sector", @OA\Schema(type="integer")),
-     *     @OA\Parameter(name="cell_id", in="query", description="Filter by cell", @OA\Schema(type="integer")),
-     *     @OA\Parameter(name="village_id", in="query", description="Filter by village", @OA\Schema(type="integer")),
      *     @OA\Parameter(name="national_id_number", in="query", description="Filter by national ID number", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="reference", in="query", description="Filter by reference", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="first_name", in="query", description="Filter by first name", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="last_name", in="query", description="Filter by last name", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="email", in="query", description="Filter by email", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="status", in="query", description="Filter by status", @OA\Schema(type="string", enum={"active","inactive"})),
      *     @OA\Parameter(name="per_page", in="query", description="Items per page", @OA\Schema(type="integer", default=50)),
      *     @OA\Response(
      *         response=200,
@@ -65,11 +65,7 @@ class MemberController extends Controller
      *                         @OA\Property(property="email", type="string", example="john@example.com"),
      *                         @OA\Property(property="status", type="string", enum={"active","inactive"}, example="active"),
      *                         @OA\Property(property="national_id_number", type="string", example="1199999999999999"),
-     *                         @OA\Property(property="province_id", type="integer", example=1),
-     *                         @OA\Property(property="district_id", type="integer", example=10),
-     *                         @OA\Property(property="sector_id", type="integer", example=55),
-     *                         @OA\Property(property="cell_id", type="integer", example=350),
-     *                         @OA\Property(property="village_id", type="integer", example=900),
+     *                         @OA\Property(property="address", type="string", example="Kigali, Rwanda"),
      *                         @OA\Property(property="image_url", type="string", nullable=true, example="https://example.com/members/img.jpg"),
      *                         @OA\Property(property="created_at", type="string", format="date-time"),
      *                         @OA\Property(property="updated_at", type="string", format="date-time")
@@ -86,25 +82,23 @@ class MemberController extends Controller
         try {
             $query = Member::query();
 
-            $locationFields = ['province_id', 'district_id', 'sector_id', 'cell_id', 'village_id', 'national_id_number'];
-            if ($request->filled($locationFields)) {
-                $query->where(function ($q) use ($request, $locationFields) {
-                    foreach ($locationFields as $field) {
-                        if ($request->filled($field)) {
-                            $q->where($field, $request->input($field));
-                        }
-                    }
-                });
+            // Add search filters
+            $searchFields = [
+                'national_id_number',
+                'reference',
+                'first_name',
+                'last_name',
+                'email',
+                'status'
+            ];
+
+            foreach ($searchFields as $field) {
+                if ($request->filled($field)) {
+                    $query->where($field, 'LIKE', '%' . $request->input($field) . '%');
+                }
             }
 
-            $members = $query->with([
-                'province',
-                'district',
-                'sector',
-                'cell',
-                'village',
-                'created_by'
-            ])->paginate($request->input('per_page', 50));
+            $members = $query->with(['created_by'])->paginate($request->input('per_page', 50));
 
             return response()->json([
                 'success' => true,
@@ -147,11 +141,7 @@ class MemberController extends Controller
      *                 @OA\Property(property="email", type="string", example="john@example.com"),
      *                 @OA\Property(property="status", type="string", enum={"active","inactive"}, example="active"),
      *                 @OA\Property(property="national_id_number", type="string", example="1199999999999999"),
-     *                 @OA\Property(property="province_id", type="integer", example=1),
-     *                 @OA\Property(property="district_id", type="integer", example=10),
-     *                 @OA\Property(property="sector_id", type="integer", example=55),
-     *                 @OA\Property(property="cell_id", type="integer", example=350),
-     *                 @OA\Property(property="village_id", type="integer", example=900),
+     *                 @OA\Property(property="address", type="string", example="Kigali, Rwanda"),
      *                 @OA\Property(property="image_url", type="string", nullable=true, example="https://example.com/members/img.jpg"),
      *                 @OA\Property(property="created_at", type="string", format="date-time"),
      *                 @OA\Property(property="updated_at", type="string", format="date-time")
@@ -165,7 +155,7 @@ class MemberController extends Controller
     public function show($id)
     {
         try {
-            $member = Member::with(['province', 'district', 'sector', 'cell', 'village', 'created_by'])->find($id);
+            $member = Member::with(['created_by'])->find($id);
 
             if (!$member) {
                 return response()->json(['success' => false, 'message' => 'Member not found'], 404);
@@ -187,7 +177,7 @@ class MemberController extends Controller
      *     @OA\RequestBody(
      *         required=true,
      *         @OA\JsonContent(
-     *             required={"first_name","last_name","gender","date_of_birth","province_id","district_id","sector_id","cell_id","village_id"},
+     *             required={"first_name","last_name"},
      *             @OA\Property(property="reference", type="string", nullable=true, description="Custom reference (auto-generated if empty)"),
      *             @OA\Property(property="first_name", type="string", example="Alice"),
      *             @OA\Property(property="last_name", type="string", example="Smith"),
@@ -201,11 +191,7 @@ class MemberController extends Controller
      *             @OA\Property(property="image", type="string", nullable=true, description="Base64 encoded image"),
      *             @OA\Property(property="status", type="string", enum={"active","inactive"}, default="active"),
      *             @OA\Property(property="national_id_number", type="string", nullable=true),
-     *             @OA\Property(property="province_id", type="integer"),
-     *             @OA\Property(property="district_id", type="integer"),
-     *             @OA\Property(property="sector_id", type="integer"),
-     *             @OA\Property(property="cell_id", type="integer"),
-     *             @OA\Property(property="village_id", type="integer")
+     *             @OA\Property(property="address", type="string", nullable=true, example="Kigali, Rwanda")
      *         )
      *     ),
      *     @OA\Response(
@@ -230,11 +216,7 @@ class MemberController extends Controller
      *                 @OA\Property(property="email", type="string", example="john@example.com"),
      *                 @OA\Property(property="status", type="string", enum={"active","inactive"}, example="active"),
      *                 @OA\Property(property="national_id_number", type="string", example="1199999999999999"),
-     *                 @OA\Property(property="province_id", type="integer", example=1),
-     *                 @OA\Property(property="district_id", type="integer", example=10),
-     *                 @OA\Property(property="sector_id", type="integer", example=55),
-     *                 @OA\Property(property="cell_id", type="integer", example=350),
-     *                 @OA\Property(property="village_id", type="integer", example=900),
+     *                 @OA\Property(property="address", type="string", example="Kigali, Rwanda"),
      *                 @OA\Property(property="image_url", type="string", nullable=true, example="https://example.com/members/img.jpg"),
      *                 @OA\Property(property="created_at", type="string", format="date-time"),
      *                 @OA\Property(property="updated_at", type="string", format="date-time")
@@ -259,11 +241,7 @@ class MemberController extends Controller
             'image' => 'nullable|string',
             'status' => 'nullable|in:active,inactive',
             'national_id_number' => 'nullable|string|unique:members,national_id_number',
-            'province_id' => 'required|exists:provinces,id',
-            'district_id' => 'required|exists:districts,id',
-            'sector_id' => 'required|exists:sectors,id',
-            'cell_id' => 'required|exists:cells,id',
-            'village_id' => 'required|exists:villages,id',
+            'address' => 'nullable|string|max:500',
         ]);
 
         if ($validator->fails()) {
@@ -289,11 +267,7 @@ class MemberController extends Controller
                 'email' => $request->email,
                 'status' => $request->input('status', 'active'),
                 'national_id_number' => $request->national_id_number,
-                'province_id' => $request->province_id,
-                'district_id' => $request->district_id,
-                'sector_id' => $request->sector_id,
-                'cell_id' => $request->cell_id,
-                'village_id' => $request->village_id,
+                'address' => $request->address,
                 'created_by_id' => Auth::id(),
             ]);
 
@@ -306,7 +280,7 @@ class MemberController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Member created successfully',
-                'data' => $member->load(['province', 'district', 'sector', 'cell', 'village', 'created_by']),
+                'data' => $member->load(['created_by']),
             ], 201);
         } catch (\Exception $e) {
             DB::rollback();
@@ -330,7 +304,7 @@ class MemberController extends Controller
      *     @OA\RequestBody(
      *         required=true,
      *         @OA\JsonContent(
-     *             required={"first_name","last_name","province_id","district_id","sector_id","cell_id","village_id"},
+     *             required={"first_name","last_name"},
      *             @OA\Property(property="reference", type="string", nullable=true),
      *             @OA\Property(property="first_name", type="string"),
      *             @OA\Property(property="last_name", type="string"),
@@ -347,11 +321,7 @@ class MemberController extends Controller
      *             @OA\Property(property="image", type="string", nullable=true, description="New base64 image (will replace old one)"),
      *             @OA\Property(property="status", type="string", enum={"active","inactive"}, nullable=true),
      *             @OA\Property(property="national_id_number", type="string", nullable=true),
-     *             @OA\Property(property="province_id", type="integer"),
-     *             @OA\Property(property="district_id", type="integer"),
-     *             @OA\Property(property="sector_id", type="integer"),
-     *             @OA\Property(property="cell_id", type="integer"),
-     *             @OA\Property(property="village_id", type="integer")
+     *             @OA\Property(property="address", type="string", nullable=true)
      *         )
      *     ),
      *     @OA\Response(
@@ -376,11 +346,7 @@ class MemberController extends Controller
      *                 @OA\Property(property="email", type="string", example="john@example.com"),
      *                 @OA\Property(property="status", type="string", enum={"active","inactive"}, example="active"),
      *                 @OA\Property(property="national_id_number", type="string", example="1199999999999999"),
-     *                 @OA\Property(property="province_id", type="integer", example=1),
-     *                 @OA\Property(property="district_id", type="integer", example=10),
-     *                 @OA\Property(property="sector_id", type="integer", example=55),
-     *                 @OA\Property(property="cell_id", type="integer", example=350),
-     *                 @OA\Property(property="village_id", type="integer", example=900),
+     *                 @OA\Property(property="address", type="string", example="Kigali, Rwanda"),
      *                 @OA\Property(property="image_url", type="string", nullable=true, example="https://example.com/members/img.jpg"),
      *                 @OA\Property(property="created_at", type="string", format="date-time"),
      *                 @OA\Property(property="updated_at", type="string", format="date-time")
@@ -406,11 +372,7 @@ class MemberController extends Controller
             'image' => 'nullable|string',
             'status' => 'nullable|in:active,inactive',
             'national_id_number' => 'nullable|string|unique:members,national_id_number,' . $id,
-            'province_id' => 'required|exists:provinces,id',
-            'district_id' => 'required|exists:districts,id',
-            'sector_id' => 'required|exists:sectors,id',
-            'cell_id' => 'required|exists:cells,id',
-            'village_id' => 'required|exists:villages,id',
+            'address' => 'nullable|string|max:500',
         ]);
 
         if ($validator->fails()) {
@@ -434,15 +396,11 @@ class MemberController extends Controller
                 'email' => $request->email ?? $member->email,
                 'status' => $request->input('status', $member->status),
                 'national_id_number' => $request->national_id_number ?? $member->national_id_number,
-                'province_id' => $request->province_id,
-                'district_id' => $request->district_id,
-                'sector_id' => $request->sector_id,
-                'cell_id' => $request->cell_id,
-                'village_id' => $request->village_id,
+                'address' => $request->address ?? $member->address,
             ]);
 
             if ($request->filled('image')) {
-                $this->base64Service->processBase64File($member, $request->image, 'image', true); // true = replace old
+                $this->base64Service->processBase64File($member, $request->image, 'image', true);
             }
 
             DB::commit();
@@ -450,7 +408,7 @@ class MemberController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Member updated successfully',
-                'data' => $member->fresh(['province', 'district', 'sector', 'cell', 'village', 'created_by']),
+                'data' => $member->fresh(['created_by']),
             ]);
         } catch (\Exception $e) {
             DB::rollback();
@@ -508,7 +466,7 @@ class MemberController extends Controller
     private function generateMemberReference(): string
     {
         do {
-            $reference = date('y') . rand(10000, 99999);
+            $reference = 'MBR-' . date('Y') . '-' . str_pad(rand(1, 99999), 5, '0', STR_PAD_LEFT);
         } while (Member::where('reference', $reference)->exists());
 
         return $reference;

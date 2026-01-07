@@ -270,7 +270,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
                         Route::get('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CompanySubscriptionInvoiceController@index');
                         Route::post('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CompanySubscriptionInvoiceController@store');
-                        Route::group(['prefix' => '{companySubscriptionInvoiceId}'], function () {
+                        Route::group(['prefix' => '{companySubInvId}'], function () {
                             Route::get('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CompanySubscriptionInvoiceController@show');
                             Route::put('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CompanySubscriptionInvoiceController@update');
                             Route::delete('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CompanySubscriptionInvoiceController@destroy');
@@ -282,7 +282,7 @@ Route::middleware('auth:sanctum')->group(function () {
                             Route::prefix('check-ins')->group(function () {
                                 Route::get('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CheckIn\CompanySubscriptionInvoiceCheckInController@index');
                                 Route::post('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CheckIn\CompanySubscriptionInvoiceCheckInController@store');
-                                Route::group(['prefix' => '{companySubscriptionInvoiceCheckInId}'], function () {
+                                Route::group(['prefix' => '{companySubscInvCInId}'], function () {
                                     Route::get('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CheckIn\CompanySubscriptionInvoiceCheckInController@show');
                                     Route::put('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CheckIn\CompanySubscriptionInvoiceCheckInController@update');
                                     Route::delete('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CheckIn\CompanySubscriptionInvoiceCheckInController@destroy');
@@ -404,10 +404,20 @@ Route::middleware('auth:sanctum')->group(function () {
                 Route::put('/status', 'App\Http\Controllers\Api\V1\Member\Subscription\MemberSubscriptionController@updateStatus');
                 // active
                 Route::get('/active', 'App\Http\Controllers\Api\V1\Member\Subscription\MemberSubscriptionController@activeSubscriptions');
+
                 Route::prefix('{memberSubscriptionId}')->group(function () {
                     Route::get('/', 'App\Http\Controllers\Api\V1\Member\Subscription\MemberSubscriptionController@show');
                     Route::put('/', 'App\Http\Controllers\Api\V1\Member\Subscription\MemberSubscriptionController@update');
                     Route::delete('/', 'App\Http\Controllers\Api\V1\Member\Subscription\MemberSubscriptionController@destroy');
+
+                    // renew
+                    Route::post('/renew', 'App\Http\Controllers\Api\V1\Member\Subscription\MemberSubscriptionRenewalController@renew');
+
+                    // upgrade
+                    Route::post('/upgrade', 'App\Http\Controllers\Api\V1\Member\Subscription\MemberSubscriptionRenewalController@upgrade');
+
+                    // renewal-analytics
+                    Route::get('/renewal-analysis', 'App\Http\Controllers\Api\V1\Member\Subscription\MemberSubscriptionRenewalController@getRenewalAnalysis');
 
                     // Transactions
                     Route::prefix('transactions')->group(function () {
@@ -438,6 +448,28 @@ Route::middleware('auth:sanctum')->group(function () {
                             Route::get('/', 'App\Http\Controllers\Api\V1\Member\Subscription\CheckIn\MemberSubscriptionCheckInController@show');
                             Route::put('/', 'App\Http\Controllers\Api\V1\Member\Subscription\CheckIn\MemberSubscriptionCheckInController@update');
                             Route::delete('/', 'App\Http\Controllers\Api\V1\Member\Subscription\CheckIn\MemberSubscriptionCheckInController@destroy');
+                        });
+                    });
+
+                    // invoices
+                    Route::prefix('invoices')->group(function () {
+                        Route::get('/', 'App\Http\Controllers\Api\V1\Member\Subscription\Invoice\MemberSubscriptionInvoiceController@index');
+                        Route::post('/', 'App\Http\Controllers\Api\V1\Member\Subscription\Invoice\MemberSubscriptionInvoiceController@store');
+                        // export
+                        Route::get('/export', 'App\Http\Controllers\Api\V1\Member\Subscription\Invoice\MemberSubscriptionInvoiceController@export');
+
+
+
+                        Route::prefix('{memberSubnvoiceId}')->group(function () {
+                            Route::get('/', 'App\Http\Controllers\Api\V1\Member\Subscription\Invoice\MemberSubscriptionInvoiceController@show');
+                            Route::put('/', 'App\Http\Controllers\Api\V1\Member\Subscription\Invoice\MemberSubscriptionInvoiceController@update');
+                            Route::delete('/', 'App\Http\Controllers\Api\V1\Member\Subscription\Invoice\MemberSubscriptionInvoiceController@destroy');
+
+                            // export
+                            Route::get('/export', 'App\Http\Controllers\Api\V1\Member\Subscription\Invoice\MemberSubscriptionInvoiceController@export');
+
+                            // status
+                            Route::put('/status', 'App\Http\Controllers\Api\V1\Member\Subscription\Invoice\MemberSubscriptionInvoiceController@updateStatus');
                         });
                     });
                 });
@@ -575,13 +607,13 @@ Route::middleware('auth:sanctum')->group(function () {
         });
 
         // invoice_tax_rates
-        Route::group(['prefix' => 'invoice-tax-rates'], function () {
-            Route::get('/', 'App\Http\Controllers\Api\V1\Utils\Invoice\InvoiceTaxRateController@index');
-            Route::post('/', 'App\Http\Controllers\Api\V1\Utils\Invoice\InvoiceTaxRateController@store');
+        Route::group(['prefix' => 'tax-rates'], function () {
+            Route::get('/', 'App\Http\Controllers\Api\V1\Utils\Invoice\TaxRateController@index');
+            Route::post('/', 'App\Http\Controllers\Api\V1\Utils\Invoice\TaxRateController@store');
             Route::group(['prefix' => '{invoiceTaxRateId}'], function () {
-                Route::get('/', 'App\Http\Controllers\Api\V1\Utils\Invoice\InvoiceTaxRateController@show');
-                Route::put('/', 'App\Http\Controllers\Api\V1\Utils\Invoice\InvoiceTaxRateController@update');
-                Route::delete('/', 'App\Http\Controllers\Api\V1\Utils\Invoice\InvoiceTaxRateController@destroy');
+                Route::get('/', 'App\Http\Controllers\Api\V1\Utils\Invoice\TaxRateController@show');
+                Route::put('/', 'App\Http\Controllers\Api\V1\Utils\Invoice\TaxRateController@update');
+                Route::delete('/', 'App\Http\Controllers\Api\V1\Utils\Invoice\TaxRateController@destroy');
             });
         });
 
@@ -604,6 +636,30 @@ Route::middleware('auth:sanctum')->group(function () {
                 Route::get('/', 'App\Http\Controllers\Api\V1\Utils\Discount\DiscountTypeController@show');
                 Route::put('/', 'App\Http\Controllers\Api\V1\Utils\Discount\DiscountTypeController@update');
                 Route::delete('/', 'App\Http\Controllers\Api\V1\Utils\Discount\DiscountTypeController@destroy');
+            });
+        });
+
+
+        // banks
+        Route::group(['prefix' => 'banks'], function () {
+            Route::get('/', 'App\Http\Controllers\Api\V1\Utils\Bank\BankController@index');
+            Route::post('/', 'App\Http\Controllers\Api\V1\Utils\Bank\BankController@store');
+            Route::group(['prefix' => '{bankId}'], function () {
+                Route::get('/', 'App\Http\Controllers\Api\V1\Utils\Bank\BankController@show');
+                Route::put('/', 'App\Http\Controllers\Api\V1\Utils\Bank\BankController@update');
+                Route::delete('/', 'App\Http\Controllers\Api\V1\Utils\Bank\BankController@destroy');
+            });
+        });
+
+
+        // bank-accounts
+        Route::group(['prefix' => 'bank-accounts'], function () {
+            Route::get('/', 'App\Http\Controllers\Api\V1\Utils\Bank\BankAccountController@index');
+            Route::post('/', 'App\Http\Controllers\Api\V1\Utils\Bank\BankAccountController@store');
+            Route::group(['prefix' => '{bankAccountId}'], function () {
+                Route::get('/', 'App\Http\Controllers\Api\V1\Utils\Bank\BankAccountController@show');
+                Route::put('/', 'App\Http\Controllers\Api\V1\Utils\Bank\BankAccountController@update');
+                Route::delete('/', 'App\Http\Controllers\Api\V1\Utils\Bank\BankAccountController@destroy');
             });
         });
     });
@@ -637,14 +693,55 @@ Route::middleware('auth:sanctum')->group(function () {
     // check-ins
     Route::prefix('check-ins')->group(function () {
         Route::get('/', 'App\Http\Controllers\Api\V1\CheckIn\MemberCheckInController@index');
-        Route::get('/summary/daily','App\Http\Controllers\Api\V1\CheckIn\MemberCheckInController@dailySummary');
+        Route::get('/summary/daily', 'App\Http\Controllers\Api\V1\CheckIn\MemberCheckInController@dailySummary');
         // hourly summary
-        Route::get('/summary/hourly','App\Http\Controllers\Api\V1\CheckIn\MemberCheckInController@hourlySummary');
+        Route::get('/summary/hourly', 'App\Http\Controllers\Api\V1\CheckIn\MemberCheckInController@hourlySummary');
         //member activitysummary
-        Route::get('/summary/member-activity','App\Http\Controllers\Api\V1\CheckIn\MemberCheckInController@memberActivitySummary');
+        Route::get('/summary/member-activity', 'App\Http\Controllers\Api\V1\CheckIn\MemberCheckInController@memberActivitySummary');
 
         Route::prefix('{memberSubscriptionCheckInId}')->group(function () {
             Route::get('/', 'App\Http\Controllers\Api\V1\CheckIn\MemberCheckInController@show');
         });
+    });
+
+
+    // MEMBER IMPORTS
+    Route::group(['prefix' => 'imports/member'], function () {
+        // Main import routes
+        Route::get('/', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@index');
+        Route::post('/', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@store');
+
+        Route::group(['prefix' => '{memberImportId}'], function () {
+            Route::get('/', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@show');
+            Route::put('/', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@update');
+            Route::delete('/', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@destroy');
+
+            // Download files
+            Route::get('/download', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@download');
+            Route::get('/download-failed', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@downloadFailed');
+
+            // Retry import
+            Route::post('/retry', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@retry');
+
+            // Import logs
+            Route::prefix('logs')->group(function () {
+                Route::get('/', 'App\Http\Controllers\Api\V1\Member\Import\Log\MemberImportLogController@index');
+                Route::post('/', 'App\Http\Controllers\Api\V1\Member\Import\Log\MemberImportLogController@store');
+
+                Route::group(['prefix' => '{logId}'], function () {
+                    Route::get('/', 'App\Http\Controllers\Api\V1\Member\Import\Log\MemberImportLogController@show');
+                    Route::put('/', 'App\Http\Controllers\Api\V1\Member\Import\Log\MemberImportLogController@update');
+                    Route::delete('/', 'App\Http\Controllers\Api\V1\Member\Import\Log\MemberImportLogController@destroy');
+                    // Retry failed row
+                    Route::post('/retry', 'App\Http\Controllers\Api\V1\Member\Import\Log\MemberImportLogController@retry');
+                });
+            });
+        });
+
+        // Sample file download
+        Route::get('/sample', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@downloadSample');
+
+        // Bulk status update
+        Route::put('/bulk-status', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@bulkUpdateStatus');
     });
 });

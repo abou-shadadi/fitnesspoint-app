@@ -30,6 +30,10 @@ class MemberSubscriptionTransaction extends Model
         return $this->belongsTo(\App\Models\Branch\Branch::class);
     }
 
-    
+
+    public function member_subscription_invoice()
+    {
+        return $this->belongsTo(MemberSubscriptionInvoice::class);
+    }
 
 }

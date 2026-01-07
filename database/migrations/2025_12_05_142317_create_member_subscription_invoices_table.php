@@ -21,13 +21,18 @@ return new class extends Migration
             $table->timestamp('to_date');
             $table->date('due_date')->nullable();
             $table->decimal('amount', 10, 2);
+             $table->decimal('proration_amount', 10, 2)->default(0);
             $table->decimal('tax_amount', 10, 2)->default(0);
+            $table->foreignId('discount_type_id')->constrained();
             $table->decimal('discount_amount', 10, 2)->default(0);
             $table->decimal('total_amount', 10, 2);
             $table->date('invoice_date');
             $table->boolean('is_sent')->default(false);
             $table->string('file')->nullable();
             $table->text('notes')->nullable();
+            $table->enum('action', ['new', 'renew', 'upgrade'])->default('new');
+            // $table->decimal('paid_amount', 10, 2)->default(0);
+            // $table->date('paid_date')->nullable();
             $table->integer('total_check_ins')->default(0);
             $table->enum('status', ['pending', 'paid', 'overdue', 'cancelled', 'refunded', 'rejected', 'partially_paid'])->default('pending');
             $table->timestamps();

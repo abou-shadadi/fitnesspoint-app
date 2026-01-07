@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\Member\Member;
 use App\Models\Member\MemberSubscription;
 use App\Models\Member\MemberSubscriptionTransaction;
+use App\Models\Member\MemberSubscriptionInvoice;
 use App\Models\Payment\PaymentMethod;
 use App\Models\Branch\Branch;
 use Carbon\Carbon;
@@ -14,6 +15,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class MemberSubscriptionTransactionController extends Controller
 {
@@ -36,58 +38,6 @@ class MemberSubscriptionTransactionController extends Controller
      *         required=true,
      *         description="Subscription ID",
      *         @OA\Schema(type="integer")
-     *     ),
-     *     @OA\Parameter(
-     *         name="status",
-     *         in="query",
-     *         required=false,
-     *         description="Filter by status",
-     *         @OA\Schema(
-     *             type="string",
-     *             enum={"pending", "completed", "failed", "cancelled", "refunded", "rejected"}
-     *         )
-     *     ),
-     *     @OA\Parameter(
-     *         name="payment_method_id",
-     *         in="query",
-     *         required=false,
-     *         description="Filter by payment method ID",
-     *         @OA\Schema(type="integer")
-     *     ),
-     *     @OA\Parameter(
-     *         name="branch_id",
-     *         in="query",
-     *         required=false,
-     *         description="Filter by branch ID",
-     *         @OA\Schema(type="integer")
-     *     ),
-     *     @OA\Parameter(
-     *         name="date_from",
-     *         in="query",
-     *         required=false,
-     *         description="Filter by date from (YYYY-MM-DD)",
-     *         @OA\Schema(type="string", format="date")
-     *     ),
-     *     @OA\Parameter(
-     *         name="date_to",
-     *         in="query",
-     *         required=false,
-     *         description="Filter by date to (YYYY-MM-DD)",
-     *         @OA\Schema(type="string", format="date")
-     *     ),
-     *     @OA\Parameter(
-     *         name="amount_min",
-     *         in="query",
-     *         required=false,
-     *         description="Minimum amount",
-     *         @OA\Schema(type="number", format="float")
-     *     ),
-     *     @OA\Parameter(
-     *         name="amount_max",
-     *         in="query",
-     *         required=false,
-     *         description="Maximum amount",
-     *         @OA\Schema(type="number", format="float")
      *     ),
      *     @OA\Response(response=200, description="List of transactions"),
      *     @OA\Response(response=404, description="Member or subscription not found"),
@@ -120,7 +70,13 @@ class MemberSubscriptionTransactionController extends Controller
             }
 
             $query = MemberSubscriptionTransaction::where('member_subscription_id', $subscriptionId)
-                ->with(['payment_method', 'branch', 'created_by', 'member_subscription']);
+                ->with([
+                    'payment_method',
+                    'branch',
+                    'created_by',
+                    'member_subscription',
+                    'member_subscription_invoice'
+                ]);
 
             // Filter by status
             if ($request->has('status') && in_array($request->status, ['pending', 'completed', 'failed', 'cancelled', 'refunded', 'rejected'])) {
@@ -137,6 +93,11 @@ class MemberSubscriptionTransactionController extends Controller
                 $query->where('branch_id', $request->branch_id);
             }
 
+            // Filter by invoice_id
+            if ($request->has('invoice_id') && $request->invoice_id) {
+                $query->where('member_subscription_invoice_id', $request->invoice_id);
+            }
+
             // Filter by date range
             if ($request->has('date_from') && $request->date_from) {
                 $query->whereDate('date', '>=', $request->date_from);
@@ -148,11 +109,11 @@ class MemberSubscriptionTransactionController extends Controller
 
             // Filter by amount range
             if ($request->has('amount_min') && $request->amount_min) {
-                $query->where('amount', '>=', $request->amount_min);
+                $query->where('amount_paid', '>=', $request->amount_min);
             }
 
             if ($request->has('amount_max') && $request->amount_max) {
-                $query->where('amount', '<=', $request->amount_max);
+                $query->where('amount_paid', '<=', $request->amount_max);
             }
 
             // Order by latest
@@ -163,9 +124,10 @@ class MemberSubscriptionTransactionController extends Controller
             // Calculate summary statistics
             $summary = [
                 'total_transactions' => $transactions->count(),
-                'total_amount' => $transactions->sum('amount'),
-                'completed_amount' => $transactions->where('status', 'completed')->sum('amount'),
-                'pending_amount' => $transactions->where('status', 'pending')->sum('amount'),
+                'total_amount_due' => $transactions->sum('amount_due'),
+                'total_amount_paid' => $transactions->sum('amount_paid'),
+                'completed_amount_paid' => $transactions->where('status', 'completed')->sum('amount_paid'),
+                'pending_amount_paid' => $transactions->where('status', 'pending')->sum('amount_paid'),
             ];
 
             return response()->json([
@@ -206,12 +168,14 @@ class MemberSubscriptionTransactionController extends Controller
      *     @OA\RequestBody(
      *         required=true,
      *         @OA\JsonContent(
-     *             required={"reference", "amount", "date", "payment_method_id", "branch_id"},
+     *             required={"reference", "amount_paid", "date", "payment_method_id", "branch_id", "member_subscription_invoice_id"},
      *             @OA\Property(property="reference", type="string", example="TXN-2024-001"),
-     *             @OA\Property(property="amount", type="number", format="float", example=100000.00),
+     *             @OA\Property(property="amount_paid", type="number", format="float", example=100000.00),
      *             @OA\Property(property="date", type="string", format="date", example="2024-01-15"),
      *             @OA\Property(property="payment_method_id", type="integer", example=1),
      *             @OA\Property(property="branch_id", type="integer", example=1),
+     *             @OA\Property(property="member_subscription_invoice_id", type="integer", example=1),
+     *             @OA\Property(property="attachment", type="string", example="invoice.pdf"),
      *             @OA\Property(property="notes", type="string", example="Payment for monthly subscription"),
      *             @OA\Property(
      *                 property="status",
@@ -223,8 +187,9 @@ class MemberSubscriptionTransactionController extends Controller
      *     ),
      *     @OA\Response(response=201, description="Transaction created successfully"),
      *     @OA\Response(response=400, description="Bad request"),
-     *     @OA\Response(response=404, description="Member, subscription, payment method, or branch not found"),
+     *     @OA\Response(response=404, description="Member, subscription, payment method, branch, or invoice not found"),
      *     @OA\Response(response=409, description="Duplicate reference"),
+     *     @OA\Response(response=422, description="Validation error - amount paid exceeds invoice balance"),
      *     @OA\Response(response=500, description="Internal server error")
      * )
      */
@@ -253,14 +218,14 @@ class MemberSubscriptionTransactionController extends Controller
             ], 404);
         }
 
-        // Validate request with new columns
+        // Validate request - amount_due is removed from request
         $validator = Validator::make($request->all(), [
             'reference' => 'required|string|max:100|unique:member_subscription_transactions,reference',
-            'amount_due' => 'required|numeric|min:0.01',
             'amount_paid' => 'required|numeric|min:0.01',
             'date' => 'required|date',
             'payment_method_id' => 'required|exists:payment_methods,id',
             'branch_id' => 'required|exists:branches,id',
+            'member_subscription_invoice_id' => 'required|exists:member_subscription_invoices,id',
             'attachment' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
             'status' => [
@@ -275,6 +240,44 @@ class MemberSubscriptionTransactionController extends Controller
                 'message' => $validator->errors()->first(),
                 'data' => null
             ], 400);
+        }
+
+        // Verify invoice exists and belongs to this subscription
+        $invoice = MemberSubscriptionInvoice::where('member_subscription_id', $subscriptionId)
+            ->find($request->input('member_subscription_invoice_id'));
+
+        if (!$invoice) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invoice not found for this subscription',
+                'data' => null
+            ], 404);
+        }
+
+        // Get invoice total_amount
+        $invoiceAmount = $invoice->total_amount;
+
+        // Calculate already paid amount for this invoice
+        $alreadyPaid = MemberSubscriptionTransaction::where('member_subscription_invoice_id', $invoice->id)
+            ->where('status', 'completed')
+            ->sum('amount_paid');
+
+        // Calculate remaining balance
+        $remainingBalance = max(0, $invoiceAmount - $alreadyPaid);
+
+        // Validate that amount_paid doesn't exceed remaining balance
+        $amountPaid = $request->input('amount_paid');
+        if ($amountPaid > $remainingBalance) {
+            return response()->json([
+                'success' => false,
+                'message' => "Amount paid (${amountPaid}) exceeds invoice remaining balance (${remainingBalance})",
+                'data' => [
+                    'invoice_total' => $invoiceAmount,
+                    'already_paid' => $alreadyPaid,
+                    'remaining_balance' => $remainingBalance,
+                    'amount_paid' => $amountPaid
+                ]
+            ], 422);
         }
 
         // Verify payment method exists
@@ -311,48 +314,18 @@ class MemberSubscriptionTransactionController extends Controller
         DB::beginTransaction();
 
         try {
-            // Calculate current_expiry_date
-            // If subscription status is 'expired', use today's date as current_expiry_date
-            // Otherwise use subscription's end_date
-            $currentExpiryDate = null;
-            if ($subscription->status === 'expired') {
-                $currentExpiryDate = now();
-            } else {
-                $currentExpiryDate = Carbon::parse($subscription->end_date); // keep as Carbon
-            }
+            // Calculate current_expiry_date (use subscription's existing end_date)
+            $currentExpiryDate = $subscription->end_date ? Carbon::parse($subscription->end_date) : null;
 
+            // For payment transactions, next_expiry_date should be the same as current
+            $nextExpiryDate = $currentExpiryDate;
 
-            // Calculate next_expiry_date based on plan's duration_type
-            $nextExpiryDate = null;
-            if ($subscription->plan && $subscription->plan->duration && $subscription->plan->duration_type) {
-                $duration = $subscription->plan->duration;
-                $unit = $subscription->plan->duration_type->unit;
-                $startDate = $currentExpiryDate ?: now();
-
-                switch ($unit) {
-                    case 'days':
-                        $nextExpiryDate = $startDate->copy()->addDays($duration);
-                        break;
-                    case 'weeks':
-                        $nextExpiryDate = $startDate->copy()->addWeeks($duration);
-                        break;
-                    case 'months':
-                        $nextExpiryDate = $startDate->copy()->addMonths($duration);
-                        break;
-                    case 'years':
-                        $nextExpiryDate = $startDate->copy()->addYears($duration);
-                        break;
-                    default:
-                        $nextExpiryDate = $startDate->copy()->addDays($duration);
-                        break;
-                }
-            }
-
-            // Create transaction with new columns
+            // Create transaction - amount_due comes from invoice total_amount
             $transaction = new MemberSubscriptionTransaction([
                 'member_subscription_id' => $subscriptionId,
+                'member_subscription_invoice_id' => $request->input('member_subscription_invoice_id'),
                 'reference' => $request->input('reference'),
-                'amount_due' => $request->input('amount_due'),
+                'amount_due' => $invoiceAmount, // Get from invoice total_amount
                 'amount_paid' => $request->input('amount_paid'),
                 'date' => $request->input('date'),
                 'payment_method_id' => $request->input('payment_method_id'),
@@ -367,15 +340,22 @@ class MemberSubscriptionTransactionController extends Controller
 
             $transaction->save();
 
-            // If transaction status is "completed", update subscription status and end_date
-            if ($request->input('status') === 'completed' || $transaction->status === 'completed') {
-                $subscription->status = 'in_progress'; // Or whatever status you want
-                $subscription->end_date = $nextExpiryDate; // Update subscription end_date to next_expiry_date
-                $subscription->save();
+            // Update invoice payment status
+            $this->updateInvoicePaymentStatus($invoice, $transaction);
+
+            // If transaction status is "completed" and invoice is fully paid, update subscription
+            if ($transaction->status === 'completed') {
+                $this->updateSubscriptionOnPayment($subscription, $transaction, $invoice);
             }
 
             // Load relationships
-            $transaction->load(['payment_method', 'branch', 'created_by', 'member_subscription.member']);
+            $transaction->load([
+                'payment_method',
+                'branch',
+                'created_by',
+                'member_subscription.member',
+                'member_subscription_invoice'
+            ]);
 
             // Commit transaction
             DB::commit();
@@ -396,6 +376,7 @@ class MemberSubscriptionTransactionController extends Controller
             ], 500);
         }
     }
+
     /**
      * @OA\Get(
      *     path="/api/members/{memberId}/subscriptions/{subscriptionId}/transactions/{id}",
@@ -451,7 +432,13 @@ class MemberSubscriptionTransactionController extends Controller
             }
 
             $transaction = MemberSubscriptionTransaction::where('member_subscription_id', $subscriptionId)
-                ->with(['payment_method', 'branch', 'created_by', 'member_subscription.member'])
+                ->with([
+                    'payment_method',
+                    'branch',
+                    'created_by',
+                    'member_subscription.member',
+                    'member_subscription_invoice'
+                ])
                 ->find($id);
 
             if (!$transaction) {
@@ -504,10 +491,12 @@ class MemberSubscriptionTransactionController extends Controller
      *         required=false,
      *         @OA\JsonContent(
      *             @OA\Property(property="reference", type="string", example="TXN-2024-001-UPDATED"),
-     *             @OA\Property(property="amount", type="number", format="float", example=120000.00),
+     *             @OA\Property(property="amount_paid", type="number", format="float", example=120000.00),
      *             @OA\Property(property="date", type="string", format="date", example="2024-01-16"),
      *             @OA\Property(property="payment_method_id", type="integer", example=2),
      *             @OA\Property(property="branch_id", type="integer", example=2),
+     *             @OA\Property(property="member_subscription_invoice_id", type="integer", example=2),
+     *             @OA\Property(property="attachment", type="string", example="updated_invoice.pdf"),
      *             @OA\Property(property="notes", type="string", example="Updated payment notes"),
      *             @OA\Property(
      *                 property="status",
@@ -520,6 +509,7 @@ class MemberSubscriptionTransactionController extends Controller
      *     @OA\Response(response=400, description="Bad request"),
      *     @OA\Response(response=404, description="Transaction not found"),
      *     @OA\Response(response=409, description="Duplicate reference"),
+     *     @OA\Response(response=422, description="Validation error - amount paid exceeds invoice balance"),
      *     @OA\Response(response=500, description="Internal server error")
      * )
      */
@@ -527,7 +517,7 @@ class MemberSubscriptionTransactionController extends Controller
     {
         // Find transaction with subscription relationship
         $transaction = MemberSubscriptionTransaction::where('member_subscription_id', $subscriptionId)
-            ->with(['member_subscription.plan.duration_type'])
+            ->with(['member_subscription.plan.duration_type', 'member_subscription_invoice'])
             ->find($id);
 
         if (!$transaction) {
@@ -538,14 +528,14 @@ class MemberSubscriptionTransactionController extends Controller
             ], 404);
         }
 
-        // Validate request with new columns
+        // Validate request - amount_due is removed
         $validator = Validator::make($request->all(), [
             'reference' => 'nullable|string|max:100|unique:member_subscription_transactions,reference,' . $id,
-            'amount_due' => 'nullable|numeric|min:0.01',
             'amount_paid' => 'nullable|numeric|min:0.01',
             'date' => 'nullable|date',
             'payment_method_id' => 'nullable|exists:payment_methods,id',
             'branch_id' => 'nullable|exists:branches,id',
+            'member_subscription_invoice_id' => 'nullable|exists:member_subscription_invoices,id',
             'attachment' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
             'status' => [
@@ -560,6 +550,53 @@ class MemberSubscriptionTransactionController extends Controller
                 'message' => $validator->errors()->first(),
                 'data' => null
             ], 400);
+        }
+
+        // Get invoice (either existing or new if changing invoice_id)
+        $invoice = null;
+        if ($request->has('member_subscription_invoice_id')) {
+            $invoice = MemberSubscriptionInvoice::where('member_subscription_id', $subscriptionId)
+                ->find($request->input('member_subscription_invoice_id'));
+
+            if (!$invoice) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invoice not found for this subscription',
+                    'data' => null
+                ], 404);
+            }
+        } else {
+            $invoice = $transaction->member_subscription_invoice;
+        }
+
+        // Validate amount_paid against invoice balance if amount_paid is being updated
+        if ($request->has('amount_paid') && $invoice) {
+            // Get invoice total_amount
+            $invoiceAmount = $invoice->total_amount;
+
+            // Calculate already paid amount for this invoice (excluding current transaction)
+            $alreadyPaid = MemberSubscriptionTransaction::where('member_subscription_invoice_id', $invoice->id)
+                ->where('id', '!=', $transaction->id) // Exclude current transaction
+                ->where('status', 'completed')
+                ->sum('amount_paid');
+
+            // Calculate remaining balance
+            $remainingBalance = max(0, $invoiceAmount - $alreadyPaid);
+
+            // Validate that amount_paid doesn't exceed remaining balance
+            $amountPaid = $request->input('amount_paid');
+            if ($amountPaid > $remainingBalance) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Amount paid (${amountPaid}) exceeds invoice remaining balance (${remainingBalance})",
+                    'data' => [
+                        'invoice_total' => $invoiceAmount,
+                        'already_paid' => $alreadyPaid,
+                        'remaining_balance' => $remainingBalance,
+                        'amount_paid' => $amountPaid
+                    ]
+                ], 422);
+            }
         }
 
         // Verify payment method exists if provided
@@ -590,74 +627,63 @@ class MemberSubscriptionTransactionController extends Controller
         DB::beginTransaction();
 
         try {
+            $oldStatus = $transaction->status;
+            $newStatus = $request->input('status', $transaction->status);
+
             // Prepare update data
             $updateData = [];
             if ($request->has('reference')) $updateData['reference'] = $request->input('reference');
-            if ($request->has('amount_due')) $updateData['amount_due'] = $request->input('amount_due');
             if ($request->has('amount_paid')) $updateData['amount_paid'] = $request->input('amount_paid');
             if ($request->has('date')) $updateData['date'] = $request->input('date');
             if ($request->has('payment_method_id')) $updateData['payment_method_id'] = $request->input('payment_method_id');
             if ($request->has('branch_id')) $updateData['branch_id'] = $request->input('branch_id');
+            if ($request->has('member_subscription_invoice_id')) $updateData['member_subscription_invoice_id'] = $request->input('member_subscription_invoice_id');
             if ($request->has('attachment')) $updateData['attachment'] = $request->input('attachment');
             if ($request->has('notes')) $updateData['notes'] = $request->input('notes');
 
-            // Handle status change and recalculate dates if needed
-            if ($request->has('status')) {
-                $updateData['status'] = $request->input('status');
+            // If invoice is changed, update amount_due from new invoice
+            if ($request->has('member_subscription_invoice_id') && $invoice) {
+                $updateData['amount_due'] = $invoice->total_amount;
+            }
 
-                // If status is being changed to "completed", recalculate dates
-                if ($request->input('status') === 'completed' && $transaction->status !== 'completed') {
+            // Handle status change
+            if ($request->has('status')) {
+                $updateData['status'] = $newStatus;
+
+                // If changing to "completed", calculate dates based on invoice action
+                if ($newStatus === 'completed' && $oldStatus !== 'completed') {
                     $subscription = $transaction->member_subscription;
 
-                    // Calculate current_expiry_date
-                    $currentExpiryDate = null;
-                    if ($subscription->status === 'expired') {
-                        $currentExpiryDate = now();
-                    } else {
-                        $currentExpiryDate = Carbon::parse($subscription->end_date);
-                    }
+                    // Get invoice action to determine date logic
+                    $invoiceAction = $invoice->action ?? 'new';
 
-                    // Calculate next_expiry_date based on plan's duration_type
-                    $nextExpiryDate = null;
-                    if ($subscription->plan && $subscription->plan->duration && $subscription->plan->duration_type) {
-                        $duration = $subscription->plan->duration;
-                        $unit = $subscription->plan->duration_type->unit;
-                        $startDate = $currentExpiryDate ?: now();
+                    // Calculate dates based on invoice action
+                    $dates = $this->calculateDatesForInvoice($subscription, $invoice, $invoiceAction);
 
-                        switch ($unit) {
-                            case 'days':
-                                $nextExpiryDate = $startDate->copy()->addDays($duration);
-                                break;
-                            case 'weeks':
-                                $nextExpiryDate = $startDate->copy()->addWeeks($duration);
-                                break;
-                            case 'months':
-                                $nextExpiryDate = $startDate->copy()->addMonths($duration);
-                                break;
-                            case 'years':
-                                $nextExpiryDate = $startDate->copy()->addYears($duration);
-                                break;
-                            default:
-                                $nextExpiryDate = $startDate->copy()->addDays($duration);
-                                break;
-                        }
-                    }
-
-                    $updateData['current_expiry_date'] = $currentExpiryDate;
-                    $updateData['next_expiry_date'] = $nextExpiryDate;
-
-                    // Update subscription status and end_date
-                    $subscription->status = 'in_progress';
-                    $subscription->end_date = $nextExpiryDate;
-                    $subscription->save();
+                    $updateData['current_expiry_date'] = $dates['current_expiry_date'];
+                    $updateData['next_expiry_date'] = $dates['next_expiry_date'];
                 }
             }
 
             // Update transaction
             $transaction->update($updateData);
 
+            // Update related invoice payment status
+            $this->updateInvoicePaymentStatus($invoice, $transaction);
+
+            // If transaction is completed and invoice is fully paid, update subscription
+            if ($newStatus === 'completed' && $oldStatus !== 'completed') {
+                $this->updateSubscriptionOnPayment($transaction->member_subscription, $transaction, $invoice);
+            }
+
             // Load relationships
-            $transaction->load(['payment_method', 'branch', 'created_by', 'member_subscription.member']);
+            $transaction->load([
+                'payment_method',
+                'branch',
+                'created_by',
+                'member_subscription.member',
+                'member_subscription_invoice'
+            ]);
 
             // Commit transaction
             DB::commit();
@@ -712,6 +738,7 @@ class MemberSubscriptionTransactionController extends Controller
     {
         try {
             $transaction = MemberSubscriptionTransaction::where('member_subscription_id', $subscriptionId)
+                ->with('member_subscription_invoice')
                 ->find($id);
 
             if (!$transaction) {
@@ -726,7 +753,16 @@ class MemberSubscriptionTransactionController extends Controller
             DB::beginTransaction();
 
             try {
+                // Store invoice reference before deletion
+                $invoice = $transaction->member_subscription_invoice;
+
+                // Delete transaction
                 $transaction->delete();
+
+                // Recalculate invoice payment status if invoice exists
+                if ($invoice) {
+                    $this->recalculateInvoicePaymentStatus($invoice);
+                }
 
                 // Commit transaction
                 DB::commit();
@@ -796,7 +832,7 @@ class MemberSubscriptionTransactionController extends Controller
     {
         // Find transaction with subscription relationship
         $transaction = MemberSubscriptionTransaction::where('member_subscription_id', $subscriptionId)
-            ->with(['member_subscription.plan.duration_type'])
+            ->with(['member_subscription.plan.duration_type', 'member_subscription_invoice'])
             ->find($id);
 
         if (!$transaction) {
@@ -830,61 +866,49 @@ class MemberSubscriptionTransactionController extends Controller
             $oldStatus = $transaction->status;
             $newStatus = $request->input('status');
 
-            // If changing to "completed", calculate dates and update subscription
+            // If changing to "completed", update dates and status
             if ($newStatus === 'completed' && $oldStatus !== 'completed') {
                 $subscription = $transaction->member_subscription;
+                $invoice = $transaction->member_subscription_invoice;
 
-                // Calculate current_expiry_date
-                $currentExpiryDate = null;
-                if ($subscription->status === 'expired') {
-                    $currentExpiryDate = now();
-                } else {
-                    $currentExpiryDate = Carbon::parse($subscription->end_date);
-                }
+                // Get invoice action to determine date logic
+                $invoiceAction = $invoice->action ?? 'new';
 
-                // Calculate next_expiry_date based on plan's duration_type
-                $nextExpiryDate = null;
-                if ($subscription->plan && $subscription->plan->duration && $subscription->plan->duration_type) {
-                    $duration = $subscription->plan->duration;
-                    $unit = $subscription->plan->duration_type->unit;
-                    $startDate = $currentExpiryDate ?: now();
+                // Calculate dates based on invoice action
+                $dates = $this->calculateDatesForInvoice($subscription, $invoice, $invoiceAction);
 
-                    switch ($unit) {
-                        case 'days':
-                            $nextExpiryDate = $startDate->copy()->addDays($duration);
-                            break;
-                        case 'weeks':
-                            $nextExpiryDate = $startDate->copy()->addWeeks($duration);
-                            break;
-                        case 'months':
-                            $nextExpiryDate = $startDate->copy()->addMonths($duration);
-                            break;
-                        case 'years':
-                            $nextExpiryDate = $startDate->copy()->addYears($duration);
-                            break;
-                        default:
-                            $nextExpiryDate = $startDate->copy()->addDays($duration);
-                            break;
-                    }
-                }
-
-                // Update transaction with dates
+                // Update transaction with calculated dates
                 $transaction->update([
                     'status' => $newStatus,
-                    'current_expiry_date' => $currentExpiryDate,
-                    'next_expiry_date' => $nextExpiryDate
+                    'current_expiry_date' => $dates['current_expiry_date'],
+                    'next_expiry_date' => $dates['next_expiry_date']
                 ]);
 
-                // Update subscription status and end_date
-                $subscription->status = 'in_progress';
-                $subscription->end_date = $nextExpiryDate;
-                $subscription->save();
+                // Update invoice payment status
+                if ($invoice) {
+                    $this->updateInvoicePaymentStatus($invoice, $transaction);
+                }
+
+                // Update subscription based on invoice action
+                $this->updateSubscriptionOnPayment($subscription, $transaction, $invoice);
             } else {
                 // For other status changes, just update the status
                 $transaction->update(['status' => $newStatus]);
+
+                // Update invoice payment status if moving from completed to another status
+                if ($oldStatus === 'completed' && $newStatus !== 'completed' && $transaction->member_subscription_invoice) {
+                    $this->recalculateInvoicePaymentStatus($transaction->member_subscription_invoice);
+                }
             }
+
             // Load relationships
-            $transaction->load(['payment_method', 'branch', 'created_by', 'member_subscription.member']);
+            $transaction->load([
+                'payment_method',
+                'branch',
+                'created_by',
+                'member_subscription.member',
+                'member_subscription_invoice'
+            ]);
 
             // Commit transaction
             DB::commit();
@@ -907,299 +931,173 @@ class MemberSubscriptionTransactionController extends Controller
     }
 
     /**
-     * @OA\Get(
-     *     path="/api/members/{memberId}/subscriptions/{subscriptionId}/transactions/summary",
-     *     summary="Get transaction summary",
-     *     tags={"Members | Subscriptions | Transactions"},
-     *     security={{"sanctum":{}}},
-     *     @OA\Parameter(
-     *         name="memberId",
-     *         in="path",
-     *         required=true,
-     *         @OA\Schema(type="integer")
-     *     ),
-     *     @OA\Parameter(
-     *         name="subscriptionId",
-     *         in="path",
-     *         required=true,
-     *         @OA\Schema(type="integer")
-     *     ),
-     *     @OA\Response(response=200, description="Transaction summary"),
-     *     @OA\Response(response=404, description="Member or subscription not found"),
-     *     @OA\Response(response=500, description="Internal server error")
-     * )
+     * Calculate dates for transaction based on invoice action
      */
-    public function summary($memberId, $subscriptionId)
+    private function calculateDatesForInvoice(MemberSubscription $subscription, MemberSubscriptionInvoice $invoice, $action)
     {
-        try {
-            // Verify member exists
-            $member = Member::find($memberId);
-            if (!$member) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Member not found',
-                    'data' => null
-                ], 404);
-            }
+        $currentExpiryDate = $subscription->end_date ? Carbon::parse($subscription->end_date) : null;
 
-            // Verify subscription exists and belongs to member
-            $subscription = MemberSubscription::where('member_id', $memberId)
-                ->find($subscriptionId);
+        switch ($action) {
+            case 'renew':
+                // For renewals: current expiry is old end date, next expiry is new end date from invoice
+                $currentExpiryDate = $subscription->end_date ? Carbon::parse($subscription->end_date) : null;
+                $nextExpiryDate = $invoice->to_date ? Carbon::parse($invoice->to_date) : null;
+                break;
 
-            if (!$subscription) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Member subscription not found',
-                    'data' => null
-                ], 404);
-            }
+            case 'upgrade':
+                // For upgrades: current expiry is old end date (from old subscription), next expiry is new end date
+                $currentExpiryDate = $subscription->end_date ? Carbon::parse($subscription->end_date) : null;
+                $nextExpiryDate = $invoice->to_date ? Carbon::parse($invoice->to_date) : null;
+                break;
 
-            // Get all transactions for the subscription
-            $transactions = MemberSubscriptionTransaction::where('member_subscription_id', $subscriptionId)->get();
-
-            // Calculate detailed summary
-            $summary = [
-                'total_transactions' => $transactions->count(),
-                'total_amount' => $transactions->sum('amount'),
-                'status_breakdown' => [
-                    'pending' => [
-                        'count' => $transactions->where('status', 'pending')->count(),
-                        'amount' => $transactions->where('status', 'pending')->sum('amount')
-                    ],
-                    'completed' => [
-                        'count' => $transactions->where('status', 'completed')->count(),
-                        'amount' => $transactions->where('status', 'completed')->sum('amount')
-                    ],
-                    'failed' => [
-                        'count' => $transactions->where('status', 'failed')->count(),
-                        'amount' => $transactions->where('status', 'failed')->sum('amount')
-                    ],
-                    'cancelled' => [
-                        'count' => $transactions->where('status', 'cancelled')->count(),
-                        'amount' => $transactions->where('status', 'cancelled')->sum('amount')
-                    ],
-                    'refunded' => [
-                        'count' => $transactions->where('status', 'refunded')->count(),
-                        'amount' => $transactions->where('status', 'refunded')->sum('amount')
-                    ],
-                    'rejected' => [
-                        'count' => $transactions->where('status', 'rejected')->count(),
-                        'amount' => $transactions->where('status', 'rejected')->sum('amount')
-                    ]
-                ],
-                'payment_methods' => $transactions->groupBy('payment_method_id')->map(function ($group) {
-                    return [
-                        'count' => $group->count(),
-                        'amount' => $group->sum('amount')
-                    ];
-                })
-            ];
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Transaction summary retrieved successfully',
-                'data' => $summary
-            ], 200);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-                'data' => null
-            ], 500);
+            case 'new':
+            default:
+                // For new subscriptions: both dates are the same (no previous expiry)
+                $currentExpiryDate = null;
+                $nextExpiryDate = $invoice->to_date ? Carbon::parse($invoice->to_date) : null;
+                break;
         }
+
+        return [
+            'current_expiry_date' => $currentExpiryDate,
+            'next_expiry_date' => $nextExpiryDate
+        ];
     }
 
     /**
-     * @OA\Post(
-     *     path="/api/members/{memberId}/subscriptions/{subscriptionId}/transactions/bulk-create",
-     *     summary="Bulk create transactions",
-     *     tags={"Members | Subscriptions | Transactions"},
-     *     security={{"sanctum":{}}},
-     *     @OA\Parameter(
-     *         name="memberId",
-     *         in="path",
-     *         required=true,
-     *         @OA\Schema(type="integer")
-     *     ),
-     *     @OA\Parameter(
-     *         name="subscriptionId",
-     *         in="path",
-     *         required=true,
-     *         @OA\Schema(type="integer")
-     *     ),
-     *     @OA\RequestBody(
-     *         required=true,
-     *         @OA\JsonContent(
-     *             required={"transactions"},
-     *             @OA\Property(
-     *                 property="transactions",
-     *                 type="array",
-     *                 description="Array of transactions to create",
-     *                 @OA\Items(
-     *                     type="object",
-     *                     required={"reference", "amount", "date", "payment_method_id", "branch_id"},
-     *                     @OA\Property(property="reference", type="string", example="TXN-2024-001"),
-     *                     @OA\Property(property="amount", type="number", format="float", example=50000.00),
-     *                     @OA\Property(property="date", type="string", format="date", example="2024-01-15"),
-     *                     @OA\Property(property="payment_method_id", type="integer", example=1),
-     *                     @OA\Property(property="branch_id", type="integer", example=1),
-     *                     @OA\Property(property="notes", type="string", example="Payment note"),
-     *                     @OA\Property(property="status", type="string", example="pending")
-     *                 )
-     *             )
-     *         )
-     *     ),
-     *     @OA\Response(response=201, description="Transactions created successfully"),
-     *     @OA\Response(response=400, description="Bad request"),
-     *     @OA\Response(response=404, description="Member or subscription not found"),
-     *     @OA\Response(response=500, description="Internal server error")
-     * )
+     * Helper method to update invoice payment status
      */
-    public function bulkCreate(Request $request, $memberId, $subscriptionId)
+    private function updateInvoicePaymentStatus(MemberSubscriptionInvoice $invoice, MemberSubscriptionTransaction $transaction)
     {
-        // Verify member exists
-        $member = Member::find($memberId);
-        if (!$member) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Member not found',
-                'data' => null
-            ], 404);
+        // Get all completed transactions for this invoice
+        $totalPaid = MemberSubscriptionTransaction::where('member_subscription_invoice_id', $invoice->id)
+            ->where('status', 'completed')
+            ->sum('amount_paid');
+
+        // Get the invoice total_amount
+        $invoiceTotal = $invoice->total_amount;
+
+        // Determine payment status based on invoice schema
+        if ($totalPaid >= $invoiceTotal) {
+            $paymentStatus = 'paid';
+        } elseif ($totalPaid > 0) {
+            $paymentStatus = 'partially_paid';
+        } else {
+            $paymentStatus = 'pending';
         }
 
-        // Verify subscription exists and belongs to member
-        $subscription = MemberSubscription::where('member_id', $memberId)
-            ->find($subscriptionId);
-
-        if (!$subscription) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Member subscription not found',
-                'data' => null
-            ], 404);
-        }
-
-        // Validate request
-        $validator = Validator::make($request->all(), [
-            'transactions' => 'required|array|min:1',
-            'transactions.*.reference' => 'required|string|max:100',
-            'transactions.*.amount' => 'required|numeric|min:0.01',
-            'transactions.*.date' => 'required|date',
-            'transactions.*.payment_method_id' => 'required|exists:payment_methods,id',
-            'transactions.*.branch_id' => 'required|exists:branches,id',
-            'transactions.*.notes' => 'nullable|string',
-            'transactions.*.status' => [
-                'nullable',
-                Rule::in(['pending', 'completed', 'failed', 'cancelled', 'refunded', 'rejected'])
-            ],
+        // Update invoice status
+        $invoice->update([
+            'status' => $paymentStatus,
         ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => $validator->errors()->first(),
-                'data' => null
-            ], 400);
-        }
-
-        // Start database transaction
-        DB::beginTransaction();
-
-        try {
-            $createdTransactions = [];
-            $failedTransactions = [];
-            $duplicateReferences = [];
-
-            // Collect all references to check for duplicates
-            $allReferences = collect($request->input('transactions'))->pluck('reference');
-            $existingReferences = MemberSubscriptionTransaction::whereIn('reference', $allReferences)
-                ->pluck('reference')
-                ->toArray();
-
-            foreach ($request->input('transactions') as $index => $txnData) {
-                try {
-                    // Check for duplicate reference
-                    if (in_array($txnData['reference'], $existingReferences)) {
-                        $duplicateReferences[] = [
-                            'index' => $index,
-                            'reference' => $txnData['reference'],
-                            'error' => 'Duplicate reference'
-                        ];
-                        continue;
-                    }
-
-                    // Check for duplicate in current batch
-                    $currentBatchRefs = array_column($createdTransactions, 'reference');
-                    if (in_array($txnData['reference'], $currentBatchRefs)) {
-                        $duplicateReferences[] = [
-                            'index' => $index,
-                            'reference' => $txnData['reference'],
-                            'error' => 'Duplicate reference in current batch'
-                        ];
-                        continue;
-                    }
-
-                    // Create transaction
-                    $transaction = new MemberSubscriptionTransaction([
-                        'member_subscription_id' => $subscriptionId,
-                        'reference' => $txnData['reference'],
-                        'amount' => $txnData['amount'],
-                        'date' => $txnData['date'],
-                        'payment_method_id' => $txnData['payment_method_id'],
-                        'branch_id' => $txnData['branch_id'],
-                        'notes' => $txnData['notes'] ?? null,
-                        'created_by_id' => Auth::id(),
-                        'status' => $txnData['status'] ?? 'pending',
-                    ]);
-
-                    $transaction->save();
-                    $transaction->load(['payment_method', 'branch', 'created_by']);
-
-                    $createdTransactions[] = $transaction;
-                    $existingReferences[] = $txnData['reference']; // Add to existing to prevent duplicates in same batch
-                } catch (\Exception $e) {
-                    $failedTransactions[] = [
-                        'index' => $index,
-                        'reference' => $txnData['reference'] ?? 'Unknown',
-                        'error' => $e->getMessage()
-                    ];
-                }
-            }
-
-            // Commit transaction
-            DB::commit();
-
-            $response = [
-                'success' => true,
-                'message' => count($createdTransactions) . ' transaction(s) created successfully',
-                'data' => [
-                    'created' => $createdTransactions,
-                    'total_created' => count($createdTransactions)
-                ]
-            ];
-
-            // Add warnings if any issues
-            if (!empty($duplicateReferences)) {
-                $response['warning'] = count($duplicateReferences) . ' transaction(s) skipped due to duplicate references';
-                $response['data']['duplicates'] = $duplicateReferences;
-            }
-
-            if (!empty($failedTransactions)) {
-                $response['warning'] = (isset($response['warning']) ? $response['warning'] . ' and ' : '') .
-                    count($failedTransactions) . ' transaction(s) failed';
-                $response['data']['failed'] = $failedTransactions;
-            }
-
-            return response()->json($response, 201);
-        } catch (\Exception $e) {
-            // Rollback transaction on error
-            DB::rollBack();
-
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-                'data' => null
-            ], 500);
-        }
     }
+
+    /**
+     * Helper method to recalculate invoice payment status after transaction deletion
+     */
+    private function recalculateInvoicePaymentStatus(MemberSubscriptionInvoice $invoice)
+    {
+        // Get all completed transactions for this invoice
+        $totalPaid = MemberSubscriptionTransaction::where('member_subscription_invoice_id', $invoice->id)
+            ->where('status', 'completed')
+            ->sum('amount_paid');
+
+        // Get the invoice total_amount
+        $invoiceTotal = $invoice->total_amount;
+
+        // Determine payment status
+        if ($totalPaid >= $invoiceTotal) {
+            $paymentStatus = 'paid';
+        } elseif ($totalPaid > 0) {
+            $paymentStatus = 'partially_paid';
+        } else {
+            $paymentStatus = 'pending';
+        }
+
+        // Update invoice
+        $invoice->update([
+            'status' => $paymentStatus,
+        ]);
+    }
+
+    /**
+     * Helper method to update subscription when payment is completed
+     *//**
+ * Helper method to update subscription when payment is completed
+ */
+private function updateSubscriptionOnPayment(MemberSubscription $subscription, MemberSubscriptionTransaction $transaction, MemberSubscriptionInvoice $invoice)
+{
+    // Check if invoice is fully paid
+    $totalPaid = MemberSubscriptionTransaction::where('member_subscription_invoice_id', $invoice->id)
+        ->where('status', 'completed')
+        ->sum('amount_paid');
+
+    $invoiceTotal = $invoice->total_amount;
+
+    // Only proceed if invoice is fully paid
+    if ($totalPaid >= $invoiceTotal) {
+        // Get the invoice action to determine what type of adjustment is needed
+        $action = $invoice->action ?? 'new';
+
+        // Update subscription based on invoice action
+        switch ($action) {
+            case 'renew':
+                // For renewals: Use invoice dates (already calculated correctly by service)
+                $subscription->start_date = $invoice->from_date;
+                $subscription->end_date = $invoice->to_date;
+                $subscription->status = 'in_progress';
+                $subscription->save();
+
+                // Find and mark the original subscription as expired
+                // The original subscription ID should be in the notes
+                preg_match('/subscription #(\d+)/', $subscription->notes ?? '', $matches);
+                if (!empty($matches[1])) {
+                    $originalSubscriptionId = $matches[1];
+                    $originalSubscription = MemberSubscription::find($originalSubscriptionId);
+
+                    if ($originalSubscription && $originalSubscription->id != $subscription->id) {
+                        $originalSubscription->update([
+                            'status' => 'expired',
+                            'notes' => $originalSubscription->notes . "\nRenewed by subscription #{$subscription->id} on " . now()->format('Y-m-d')
+                        ]);
+                    }
+                }
+                break;
+
+            case 'upgrade':
+                // For upgrades: Use invoice dates
+                $subscription->start_date = $invoice->from_date;
+                $subscription->end_date = $invoice->to_date;
+                $subscription->status = 'in_progress';
+                $subscription->save();
+
+                // Find and cancel old subscription
+                preg_match('/Upgrade from.*?#(\d+)/', $subscription->notes ?? '', $matches);
+                if (!empty($matches[1])) {
+                    $oldSubscriptionId = $matches[1];
+                    $oldSubscription = MemberSubscription::find($oldSubscriptionId);
+
+                    if ($oldSubscription && $oldSubscription->id != $subscription->id) {
+                        $oldSubscription->update([
+                            'status' => 'cancelled',
+                            'notes' => $oldSubscription->notes . "\nUpgraded to subscription #{$subscription->id} on " . now()->format('Y-m-d')
+                        ]);
+                    }
+                }
+                break;
+
+            case 'new':
+            default:
+                // For new subscriptions: Just activate it
+                if ($subscription->status === 'pending') {
+                    $subscription->status = 'in_progress';
+                    $subscription->save();
+                }
+                break;
+        }
+
+        // Log the action
+        // \Log::info("Subscription #{$subscription->id} updated with action '{$action}' after payment completion");
+    }
+}
 }

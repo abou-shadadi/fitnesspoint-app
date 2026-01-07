@@ -15,10 +15,12 @@ return new class extends Migration
             $table->id();
             $table->string('reference');
 
-            $table->foreignId('company_subscription_invoice_id')
-                ->constrained('company_subscription_invoices')
-                ->onDelete('cascade');
-
+            // Invoice FK (manual to avoid long name)
+            $table->unsignedBigInteger('company_subscription_invoice_id');
+            $table->foreign('company_subscription_invoice_id', 'cst_invoice_fk')
+                ->references('id')
+                ->on('company_subscription_invoices')
+                ->cascadeOnDelete();
 
             $table->foreignId('company_subscription_id')
                 ->constrained()
@@ -46,8 +48,14 @@ return new class extends Migration
             $table->timestamp('current_expiry_date')->nullable();
             $table->timestamp('next_expiry_date')->nullable();
 
-            $table->enum('status', ['pending', 'completed', 'failed', 'cancelled', 'refunded', 'rejected'])
-                ->default('pending');
+            $table->enum('status', [
+                'pending',
+                'completed',
+                'failed',
+                'cancelled',
+                'refunded',
+                'rejected'
+            ])->default('pending');
 
             $table->timestamps();
         });

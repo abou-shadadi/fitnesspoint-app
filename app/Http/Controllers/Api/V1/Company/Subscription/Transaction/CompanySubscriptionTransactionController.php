@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use App\Services\File\Base64Service;
+use Carbon\Carbon;
 
 class CompanySubscriptionTransactionController extends Controller
 {
@@ -247,7 +248,7 @@ class CompanySubscriptionTransactionController extends Controller
      *     @OA\Response(response=201, description="Transaction created successfully"),
      *     @OA\Response(response=400, description="Bad request"),
      *     @OA\Response(response=404, description="Company, subscription, invoice, payment method, or branch not found"),
-     *     @OA\Response(response=409, description="Duplicate reference"),
+     *     @OA\Response(response=409, description="Duplicate reference or payment exceeds total amount"),
      *     @OA\Response(response=500, description="Internal server error")
      * )
      */
@@ -321,6 +322,15 @@ class CompanySubscriptionTransactionController extends Controller
             ], 400);
         }
 
+        // Check if invoice is cancelled or rejected
+        if (in_array($invoice->status, ['cancelled', 'rejected'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot process payment for a ' . $invoice->status . ' invoice',
+                'data' => null
+            ], 400);
+        }
+
         // Verify payment method exists
         $paymentMethod = PaymentMethod::find($request->input('payment_method_id'));
         if (!$paymentMethod) {
@@ -351,6 +361,31 @@ class CompanySubscriptionTransactionController extends Controller
                 'success' => false,
                 'message' => 'Transaction with this reference already exists',
                 'data' => null
+            ], 409);
+        }
+
+        // Check if payment amount exceeds total invoice amount
+        $amountPaid = $request->input('amount_paid');
+        $invoiceTotalAmount = $invoice->total_amount;
+
+        // Get total already paid amount for this invoice
+        $totalAlreadyPaid = CompanySubscriptionTransaction::where('company_subscription_invoice_id', $invoice->id)
+            ->where('status', 'completed')
+            ->sum('amount_paid');
+
+        $remainingAmount = $invoiceTotalAmount - $totalAlreadyPaid;
+
+        if ($amountPaid > $remainingAmount) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Payment amount exceeds remaining invoice amount. Remaining amount: ' . number_format($remainingAmount, 2),
+                'data' => [
+                    'invoice_total' => $invoiceTotalAmount,
+                    'already_paid' => $totalAlreadyPaid,
+                    'remaining_amount' => $remainingAmount,
+                    'attempted_payment' => $amountPaid,
+                    'excess_amount' => $amountPaid - $remainingAmount
+                ]
             ], 409);
         }
 
@@ -421,6 +456,8 @@ class CompanySubscriptionTransactionController extends Controller
                         'id' => $invoice->id,
                         'reference' => $invoice->reference,
                         'total_amount' => $invoice->total_amount,
+                        'already_paid' => $totalAlreadyPaid + $amountPaid,
+                        'remaining_amount' => $invoiceTotalAmount - ($totalAlreadyPaid + $amountPaid),
                         'status' => $invoice->status,
                     ]
                 ]
@@ -559,7 +596,7 @@ class CompanySubscriptionTransactionController extends Controller
      *     @OA\Response(response=200, description="Transaction updated successfully"),
      *     @OA\Response(response=400, description="Bad request"),
      *     @OA\Response(response=404, description="Transaction not found"),
-     *     @OA\Response(response=409, description="Duplicate reference"),
+     *     @OA\Response(response=409, description="Duplicate reference or payment exceeds total amount"),
      *     @OA\Response(response=500, description="Internal server error")
      * )
      */
@@ -625,6 +662,22 @@ class CompanySubscriptionTransactionController extends Controller
             }
         }
 
+        // Check if updating amount_paid
+        if ($request->has('amount_paid')) {
+            $newAmountPaid = $request->input('amount_paid');
+            $invoice = $transaction->company_subscription_invoice;
+
+            // Validate payment amount
+            $validation = $this->validatePaymentAmount($invoice->id, $newAmountPaid, $id);
+            if (!$validation['valid']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $validation['message'],
+                    'data' => $validation['data']
+                ], 409);
+            }
+        }
+
         // Start database transaction
         DB::beginTransaction();
 
@@ -667,9 +720,6 @@ class CompanySubscriptionTransactionController extends Controller
                 // Update subscription status
                 $subscription->status = 'in_progress';
                 $subscription->save();
-
-                // Update invoice if needed
-                $this->updateInvoicePaymentStatus($invoice);
             }
 
             // Handle status change from "completed"
@@ -684,13 +734,13 @@ class CompanySubscriptionTransactionController extends Controller
                     $subscription->status = 'pending';
                     $subscription->save();
                 }
-
-                // Recalculate invoice status
-                $this->updateInvoicePaymentStatus($invoice);
             }
 
             // Update transaction
             $transaction->update($updateData);
+
+            // Update invoice payment status
+            $this->updateInvoicePaymentStatus($invoice);
 
             // Load relationships
             $transaction->load(['payment_method', 'branch', 'created_by', 'company_subscription.company', 'company_subscription_invoice']);
@@ -842,6 +892,7 @@ class CompanySubscriptionTransactionController extends Controller
      *     @OA\Response(response=200, description="Status updated successfully"),
      *     @OA\Response(response=400, description="Bad request"),
      *     @OA\Response(response=404, description="Transaction not found"),
+     *     @OA\Response(response=409, description="Payment would exceed invoice amount"),
      *     @OA\Response(response=500, description="Internal server error")
      * )
      */
@@ -876,12 +927,28 @@ class CompanySubscriptionTransactionController extends Controller
             ], 400);
         }
 
+        $newStatus = $request->input('status');
+        $oldStatus = $transaction->status;
+
+        // Check if changing to completed status
+        if ($newStatus === 'completed' && $oldStatus !== 'completed') {
+            $invoice = $transaction->company_subscription_invoice;
+
+            // Validate payment amount
+            $validation = $this->validatePaymentAmount($invoice->id, $transaction->amount_paid, $id);
+            if (!$validation['valid']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $validation['message'],
+                    'data' => $validation['data']
+                ], 409);
+            }
+        }
+
         // Start database transaction
         DB::beginTransaction();
 
         try {
-            $oldStatus = $transaction->status;
-            $newStatus = $request->input('status');
             $subscription = $transaction->company_subscription;
             $invoice = $transaction->company_subscription_invoice;
 
@@ -1080,28 +1147,135 @@ class CompanySubscriptionTransactionController extends Controller
     }
 
     /**
-     * Update invoice payment status based on transactions
+     * Enhanced invoice payment status update
      */
     private function updateInvoicePaymentStatus($invoice)
     {
-        // Get all transactions for this invoice
+        if (!$invoice) {
+            return;
+        }
+
+        // Get all completed transactions for this invoice
         $transactions = CompanySubscriptionTransaction::where('company_subscription_invoice_id', $invoice->id)
             ->where('status', 'completed')
             ->get();
 
         $totalPaid = $transactions->sum('amount_paid');
-        $amountDue = $invoice->total_amount;
+        $invoiceTotalAmount = $invoice->total_amount;
+
+        // Calculate payment percentage
+        $paymentPercentage = $invoiceTotalAmount > 0 ? ($totalPaid / $invoiceTotalAmount) * 100 : 0;
 
         // Determine invoice status
-        if ($totalPaid >= $amountDue) {
+        if ($totalPaid >= $invoiceTotalAmount) {
             $invoice->status = 'paid';
-        } elseif ($totalPaid > 0 && $totalPaid < $amountDue) {
+        } elseif ($totalPaid > 0 && $totalPaid < $invoiceTotalAmount) {
             $invoice->status = 'partially_paid';
         } else {
-            $invoice->status = 'pending';
+            // Check if there are pending transactions
+            $pendingTransactions = CompanySubscriptionTransaction::where('company_subscription_invoice_id', $invoice->id)
+                ->where('status', 'pending')
+                ->exists();
+
+            $invoice->status = $pendingTransactions ? 'pending' : 'unpaid';
+        }
+
+        // Save payment information
+        $invoice->amount_paid = $totalPaid;
+        $invoice->remaining_amount = max(0, $invoiceTotalAmount - $totalPaid);
+        $invoice->payment_percentage = $paymentPercentage;
+
+        // Update payment date if fully paid
+        if ($invoice->status === 'paid' && !$invoice->payment_date) {
+            $lastPaymentDate = $transactions->max('date');
+            $invoice->payment_date = $lastPaymentDate;
         }
 
         $invoice->save();
+    }
+
+    /**
+     * Calculate total paid amount for an invoice
+     */
+    private function calculateTotalPaidForInvoice($invoiceId)
+    {
+        return CompanySubscriptionTransaction::where('company_subscription_invoice_id', $invoiceId)
+            ->where('status', 'completed')
+            ->sum('amount_paid');
+    }
+
+    /**
+     * Get invoice payment summary
+     */
+    private function getInvoicePaymentSummary($invoiceId)
+    {
+        $invoice = CompanySubscriptionInvoice::find($invoiceId);
+        if (!$invoice) {
+            return null;
+        }
+
+        $totalPaid = $this->calculateTotalPaidForInvoice($invoiceId);
+        $remaining = max(0, $invoice->total_amount - $totalPaid);
+
+        return [
+            'invoice_total' => $invoice->total_amount,
+            'total_paid' => $totalPaid,
+            'remaining_amount' => $remaining,
+            'payment_percentage' => $invoice->total_amount > 0 ? ($totalPaid / $invoice->total_amount) * 100 : 0,
+            'status' => $invoice->status,
+        ];
+    }
+
+    /**
+     * Validate payment amount doesn't exceed invoice amount
+     */
+    private function validatePaymentAmount($invoiceId, $amountPaid, $excludeTransactionId = null)
+    {
+        $invoice = CompanySubscriptionInvoice::find($invoiceId);
+        if (!$invoice) {
+            return [
+                'valid' => false,
+                'message' => 'Invoice not found',
+                'data' => null
+            ];
+        }
+
+        // Get total already paid
+        $query = CompanySubscriptionTransaction::where('company_subscription_invoice_id', $invoiceId)
+            ->where('status', 'completed');
+
+        if ($excludeTransactionId) {
+            $query->where('id', '!=', $excludeTransactionId);
+        }
+
+        $totalAlreadyPaid = $query->sum('amount_paid');
+        $remainingAmount = max(0, $invoice->total_amount - $totalAlreadyPaid);
+
+        if ($amountPaid > $remainingAmount) {
+            return [
+                'valid' => false,
+                'message' => 'Payment amount exceeds remaining invoice amount',
+                'data' => [
+                    'invoice_total' => $invoice->total_amount,
+                    'already_paid' => $totalAlreadyPaid,
+                    'remaining_amount' => $remainingAmount,
+                    'attempted_payment' => $amountPaid,
+                    'excess_amount' => $amountPaid - $remainingAmount
+                ]
+            ];
+        }
+
+        return [
+            'valid' => true,
+            'message' => 'Payment amount is valid',
+            'data' => [
+                'invoice_total' => $invoice->total_amount,
+                'already_paid' => $totalAlreadyPaid,
+                'remaining_amount' => $remainingAmount,
+                'new_total_paid' => $totalAlreadyPaid + $amountPaid,
+                'new_remaining' => $remainingAmount - $amountPaid
+            ]
+        ];
     }
 
     /**
@@ -1121,7 +1295,7 @@ class CompanySubscriptionTransactionController extends Controller
      */
     private function calculateNextExpiryDate($startDate, $duration, $unit)
     {
-        $start = \Carbon\Carbon::parse($startDate);
+        $start = Carbon::parse($startDate);
 
         switch ($unit) {
             case 'days':
@@ -1134,6 +1308,104 @@ class CompanySubscriptionTransactionController extends Controller
                 return $start->copy()->addYears($duration);
             default:
                 return $start->copy()->addDays($duration);
+        }
+    }
+
+    /**
+     * @OA\Get(
+     *     path="/api/companies/{companyId}/subscriptions/{subscriptionId}/invoices/{invoiceId}/payment-summary",
+     *     summary="Get payment summary for a specific invoice",
+     *     tags={"Companies | Subscriptions | Transactions"},
+     *     security={{"sanctum":{}}},
+     *     @OA\Parameter(
+     *         name="companyId",
+     *         in="path",
+     *         required=true,
+     *         @OA\Schema(type="integer")
+     *     ),
+     *     @OA\Parameter(
+     *         name="subscriptionId",
+     *         in="path",
+     *         required=true,
+     *         @OA\Schema(type="integer")
+     *     ),
+     *     @OA\Parameter(
+     *         name="invoiceId",
+     *         in="path",
+     *         required=true,
+     *         @OA\Schema(type="integer")
+     *     ),
+     *     @OA\Response(response=200, description="Payment summary retrieved"),
+     *     @OA\Response(response=404, description="Invoice not found"),
+     *     @OA\Response(response=500, description="Internal server error")
+     * )
+     */
+    public function getInvoicePaymentSummaryEndpoint($companyId, $subscriptionId, $invoiceId)
+    {
+        try {
+            // Verify company exists
+            $company = Company::find($companyId);
+            if (!$company) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Company not found',
+                    'data' => null
+                ], 404);
+            }
+
+            // Verify subscription exists and belongs to company
+            $subscription = CompanySubscription::where('company_id', $companyId)->find($subscriptionId);
+            if (!$subscription) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Company subscription not found',
+                    'data' => null
+                ], 404);
+            }
+
+            // Verify invoice exists and belongs to subscription
+            $invoice = CompanySubscriptionInvoice::where('company_subscription_id', $subscriptionId)
+                ->find($invoiceId);
+
+            if (!$invoice) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invoice not found for this subscription',
+                    'data' => null
+                ], 404);
+            }
+
+            // Get payment summary
+            $paymentSummary = $this->getInvoicePaymentSummary($invoiceId);
+
+            // Get all transactions for this invoice
+            $transactions = CompanySubscriptionTransaction::where('company_subscription_invoice_id', $invoiceId)
+                ->with(['payment_method', 'branch', 'created_by'])
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Invoice payment summary retrieved successfully',
+                'data' => [
+                    'invoice' => [
+                        'id' => $invoice->id,
+                        'reference' => $invoice->reference,
+                        'total_amount' => $invoice->total_amount,
+                        'status' => $invoice->status,
+                        'invoice_date' => $invoice->invoice_date,
+                        'due_date' => $invoice->due_date,
+                    ],
+                    'payment_summary' => $paymentSummary,
+                    'transactions' => $transactions
+                ]
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'data' => null
+            ], 500);
         }
     }
 }

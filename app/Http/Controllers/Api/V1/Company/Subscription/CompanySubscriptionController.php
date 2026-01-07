@@ -7,9 +7,11 @@ use Illuminate\Http\Request;
 use App\Models\Company\Company;
 use App\Models\Company\CompanySubscription;
 use App\Models\Company\CompanySubscriptionBenefit;
+use App\Models\Duration\DurationType;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 use App\Services\File\Base64Service;
 
 class CompanySubscriptionController extends Controller
@@ -53,7 +55,7 @@ class CompanySubscriptionController extends Controller
             }
 
             $subscriptions = $company->company_subscriptions()
-                ->with(['currency', 'branch','duration_type', 'billing_type', 'benefits.benefit', 'created_by', 'company'])
+                ->with(['currency', 'branch', 'duration_type', 'billing_type', 'benefits.benefit', 'created_by', 'company'])
                 ->get();
 
             return response()->json([
@@ -85,13 +87,13 @@ class CompanySubscriptionController extends Controller
      *     @OA\RequestBody(
      *         required=true,
      *         @OA\JsonContent(
-     *             required={"unit_price","currency_id","duration_type_id","billing_type_id","start_date"},
+     *             required={"unit_price","currency_id","duration_type_id","billing_type_id","start_date","initial_count"},
      *             @OA\Property(property="unit_price", type="number", example="600000"),
      *             @OA\Property(property="currency_id", type="integer", example=1),
-     *             @OA\Property(property="duration_type_id", type="integer", example=1),
+     *             @OA\Property(property="duration_type_id", type="integer", example=3),
      *             @OA\Property(property="billing_type_id", type="integer", example=2),
      *             @OA\Property(property="start_date", type="string", format="date", example="2025-01-01"),
-     *             @OA\Property(property="end_date", type="string", format="date", example="2025-12-31"),
+     *             @OA\Property(property="initial_count", type="integer", example=3, description="Number of duration units (e.g., 3 months if duration_type_id is Monthly)"),
      *             @OA\Property(
      *                 property="attachment",
      *                 type="string",
@@ -100,12 +102,6 @@ class CompanySubscriptionController extends Controller
      *             ),
      *             @OA\Property(property="branch_id", type="integer", example=1),
      *             @OA\Property(property="notes", type="string", example="Annual fitness subscription"),
-     *             @OA\Property(
-     *                 property="status",
-     *                 type="string",
-     *                 enum={"pending","in_progress","cancelled","expired","refunded","rejected"},
-     *                 example="pending"
-     *             ),
      *             @OA\Property(
      *                 property="benefits",
      *                 type="array",
@@ -142,16 +138,12 @@ class CompanySubscriptionController extends Controller
             'duration_type_id' => 'required|exists:duration_types,id',
             'billing_type_id' => 'required|exists:billing_types,id',
             'start_date' => 'required|date',
-            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'initial_count' => 'required|integer|min:1',
             'attachment' => 'nullable|string',
             'notes' => 'nullable|string',
             'benefits' => 'nullable|array',
             'benefits.*' => 'integer|exists:benefits,id',
             'branch_id' => 'required|exists:branches,id',
-            'status' => [
-                'nullable',
-                Rule::in(['pending', 'in_progress', 'cancelled', 'expired', 'refunded', 'rejected'])
-            ],
         ]);
 
         if ($validator->fails()) {
@@ -162,21 +154,33 @@ class CompanySubscriptionController extends Controller
             ], 400);
         }
 
+        // Get duration type
+        $durationType = DurationType::find($request->input('duration_type_id'));
+
+        // Calculate end date based on start_date, duration_type, and initial_count
+        $startDate = Carbon::parse($request->input('start_date'));
+        $initialCount = $request->input('initial_count');
+        $endDate = $this->calculateEndDate($startDate, $durationType->unit, $initialCount);
+
+        // Determine status automatically based on BOTH start and end dates
+        $status = $this->determineSubscriptionStatus($startDate, $endDate);
+
         // Start database transaction
         DB::beginTransaction();
 
         try {
-            // Create subscription
+            // Create subscription with calculated end date and automatic status
             $subscription = new CompanySubscription([
                 'company_id' => $companyId,
                 'unit_price' => $request->input('unit_price'),
                 'currency_id' => $request->input('currency_id'),
                 'duration_type_id' => $request->input('duration_type_id'),
                 'billing_type_id' => $request->input('billing_type_id'),
-                'start_date' => $request->input('start_date'),
-                'end_date' => $request->input('end_date'),
+                'start_date' => $startDate,
+                'end_date' => $endDate,
+                'initial_count' => $initialCount,
                 'notes' => $request->input('notes'),
-                'status' => $request->input('status', 'pending'),
+                'status' => $status, // Automatically determined
                 'created_by_id' => auth()->user()->id,
                 'branch_id' => $request->input('branch_id'),
             ]);
@@ -233,7 +237,7 @@ class CompanySubscriptionController extends Controller
     public function show($companyId, $id)
     {
         try {
-            $subscription = CompanySubscription::with(['branch','currency', 'duration_type', 'billing_type', 'benefits.benefit', 'company', 'created_by'])
+            $subscription = CompanySubscription::with(['branch', 'currency', 'duration_type', 'billing_type', 'benefits.benefit', 'company', 'created_by'])
                 ->where('company_id', $companyId)
                 ->find($id);
 
@@ -275,7 +279,7 @@ class CompanySubscriptionController extends Controller
      *             @OA\Property(property="duration_type_id", type="integer"),
      *             @OA\Property(property="billing_type_id", type="integer"),
      *             @OA\Property(property="start_date", type="string", format="date"),
-     *             @OA\Property(property="end_date", type="string", format="date"),
+     *             @OA\Property(property="initial_count", type="integer", description="Number of duration units"),
      *             @OA\Property(
      *                 property="attachment",
      *                 type="string",
@@ -283,11 +287,6 @@ class CompanySubscriptionController extends Controller
      *             ),
      *             @OA\Property(property="branch_id", type="integer"),
      *             @OA\Property(property="notes", type="string"),
-     *             @OA\Property(
-     *                 property="status",
-     *                 type="string",
-     *                 enum={"pending","in_progress","cancelled","expired","refunded","rejected"}
-     *             ),
      *             @OA\Property(
      *                 property="benefits",
      *                 type="array",
@@ -325,16 +324,12 @@ class CompanySubscriptionController extends Controller
             'duration_type_id' => 'nullable|exists:duration_types,id',
             'billing_type_id' => 'nullable|exists:billing_types,id',
             'start_date' => 'nullable|date',
-            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'initial_count' => 'nullable|integer|min:1',
             'attachment' => 'nullable|string',
             'notes' => 'nullable|string',
             'benefits' => 'nullable|array',
             'benefits.*' => 'integer|exists:benefits,id',
             'branch_id' => 'nullable|exists:branches,id',
-            'status' => [
-                'nullable',
-                Rule::in(['pending', 'in_progress', 'cancelled', 'expired', 'refunded', 'rejected'])
-            ],
         ]);
 
         if ($validator->fails()) {
@@ -356,10 +351,31 @@ class CompanySubscriptionController extends Controller
             if ($request->has('duration_type_id')) $updateData['duration_type_id'] = $request->input('duration_type_id');
             if ($request->has('billing_type_id')) $updateData['billing_type_id'] = $request->input('billing_type_id');
             if ($request->has('start_date')) $updateData['start_date'] = $request->input('start_date');
-            if ($request->has('end_date')) $updateData['end_date'] = $request->input('end_date');
+            if ($request->has('initial_count')) $updateData['initial_count'] = $request->input('initial_count');
             if ($request->has('notes')) $updateData['notes'] = $request->input('notes');
-            if ($request->has('status')) $updateData['status'] = $request->input('status');
             if ($request->has('branch_id')) $updateData['branch_id'] = $request->input('branch_id');
+
+            // If start_date, duration_type_id, or initial_count changed, recalculate end_date and status
+            if ($request->has('start_date') || $request->has('duration_type_id') || $request->has('initial_count')) {
+                $startDate = $request->has('start_date')
+                    ? Carbon::parse($request->input('start_date'))
+                    : Carbon::parse($subscription->start_date);
+
+                $durationTypeId = $request->has('duration_type_id')
+                    ? $request->input('duration_type_id')
+                    : $subscription->duration_type_id;
+
+                $durationType = DurationType::find($durationTypeId);
+
+                $initialCount = $request->has('initial_count')
+                    ? $request->input('initial_count')
+                    : $subscription->initial_count;
+
+                $endDate = $this->calculateEndDate($startDate, $durationType->unit, $initialCount);
+
+                $updateData['end_date'] = $endDate;
+                $updateData['status'] = $this->determineSubscriptionStatus($startDate, $endDate);
+            }
 
             // Update subscription
             $subscription->update($updateData);
@@ -454,11 +470,58 @@ class CompanySubscriptionController extends Controller
     }
 
     /**
+     * Calculate end date based on start date, unit, and count
+     */
+    private function calculateEndDate(Carbon $startDate, $unit, $count)
+    {
+        switch ($unit) {
+            case 'days':
+                return $startDate->copy()->addDays($count);
+            case 'weeks':
+                return $startDate->copy()->addWeeks($count);
+            case 'months':
+                return $startDate->copy()->addMonths($count);
+            case 'years':
+                return $startDate->copy()->addYears($count);
+            default:
+                return $startDate->copy()->addDays($count);
+        }
+    }
+
+    /**
+     * Determine subscription status based on start date
+     */
+    /**
+     * Determine subscription status based on start and end dates
+     */
+    private function determineSubscriptionStatus(Carbon $startDate, Carbon $endDate = null)
+    {
+        $now = Carbon::now();
+
+        // If no end date provided, just check start date
+        if (!$endDate) {
+            if ($startDate->isPast() || $startDate->isToday()) {
+                return 'in_progress';
+            } else {
+                return 'pending';
+            }
+        }
+
+        // Check all date scenarios
+        if ($now->isBefore($startDate)) {
+            // Subscription hasn't started yet
+            return 'pending';
+        } elseif ($now->isAfter($endDate)) {
+            // Subscription has ended
+            return 'expired';
+        } else {
+            // Current date is between start and end dates
+            return 'in_progress';
+        }
+    }
+
+    /**
      * Sync subscription benefits
-     *
-     * @param CompanySubscription $subscription
-     * @param array $benefitIds Array of benefit IDs
-     * @return void
      */
     private function syncSubscriptionBenefits(CompanySubscription $subscription, array $benefitIds)
     {
@@ -508,4 +571,49 @@ class CompanySubscriptionController extends Controller
                 ->update(['status' => 'active']);
         }
     }
+
+
+    /**
+ * Check and update subscription statuses (for cron job or manual trigger)
+ */
+public function checkSubscriptionStatuses($companyId = null)
+{
+    try {
+        $query = CompanySubscription::query();
+
+        if ($companyId) {
+            $query->where('company_id', $companyId);
+        }
+
+        $subscriptions = $query->get();
+        $updatedCount = 0;
+
+        foreach ($subscriptions as $subscription) {
+            $startDate = Carbon::parse($subscription->start_date);
+            $endDate = $subscription->end_date ? Carbon::parse($subscription->end_date) : null;
+
+            $newStatus = $this->determineSubscriptionStatus($startDate, $endDate);
+
+            if ($subscription->status !== $newStatus) {
+                $subscription->update(['status' => $newStatus]);
+                $updatedCount++;
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => "Checked {$subscriptions->count()} subscriptions, updated {$updatedCount} statuses",
+            'data' => [
+                'total_checked' => $subscriptions->count(),
+                'updated' => $updatedCount
+            ]
+        ], 200);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage(),
+            'data' => null
+        ], 500);
+    }
+}
 }

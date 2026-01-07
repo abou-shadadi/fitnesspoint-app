@@ -19,6 +19,7 @@ return new class extends Migration
             $table->foreignId('currency_id')->constrained();
             $table->foreignId('duration_type_id')->constrained();
             $table->foreignId('billing_type_id')->constrained();
+            $table->integer('initial_count')->default(1); // added this now
             $table->date('start_date');
             $table->date('end_date')->nullable();
             $table->string('attachment')->nullable();

@@ -13,14 +13,21 @@ return new class extends Migration
     {
         Schema::create('company_subscription_invoice_recipients', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('company_subscription_invoice_id')->constrained()->onDelete('cascade');
-            $table->foreignId('company_adminstrator_id')->constrained();
-            // is primary
+
+            $table->unsignedBigInteger('company_subscription_invoice_id');
+            $table->foreign('company_subscription_invoice_id', 'csir_invoice_id_fk')
+                ->references('id')
+                ->on('company_subscription_invoices')
+                ->onDelete('cascade');
+
+            $table->unsignedBigInteger('company_administrator_id');
+            $table->foreign('company_administrator_id', 'csir_admin_id_fk')
+                ->references('id')
+                ->on('company_administrators');
+
             $table->boolean('is_primary')->default(false);
-            // is senbt
             $table->boolean('is_sent')->default(false);
-            // satus
-            $table->enum('status', ['active', 'inactive'])->default('pending');
+            $table->enum('status', ['active', 'inactive'])->default('active');
             $table->timestamps();
         });
     }

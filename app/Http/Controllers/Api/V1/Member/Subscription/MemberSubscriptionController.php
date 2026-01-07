@@ -12,6 +12,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Carbon\Carbon;
 
 class MemberSubscriptionController extends Controller
 {
@@ -85,7 +86,7 @@ class MemberSubscriptionController extends Controller
             }
 
             $query = MemberSubscription::where('member_id', $memberId)
-                ->with(['plan', 'branch', 'created_by']);
+                ->with(['plan', 'plan.duration_type', 'branch', 'created_by']);
 
             // Filter by status
             if ($request->has('status') && in_array($request->status, ['pending', 'in_progress', 'cancelled', 'expired', 'refunded', 'rejected'])) {
@@ -145,10 +146,15 @@ class MemberSubscriptionController extends Controller
      *     @OA\RequestBody(
      *         required=true,
      *         @OA\JsonContent(
-     *             required={"plan_id", "start_date", "branch_id"},
+     *             required={"plan_id", "branch_id"},
      *             @OA\Property(property="plan_id", type="integer", example=1),
-     *             @OA\Property(property="start_date", type="string", format="date", example="2024-01-01"),
-     *             @OA\Property(property="end_date", type="string", format="date", example="2024-12-31"),
+     *             @OA\Property(
+     *                 property="start_date",
+     *                 type="string",
+     *                 format="date",
+     *                 description="Optional custom start date. If not provided, current date will be used.",
+     *                 example="2024-01-01"
+     *             ),
      *             @OA\Property(property="notes", type="string", example="Annual membership subscription"),
      *             @OA\Property(property="branch_id", type="integer", example=1),
      *             @OA\Property(
@@ -180,8 +186,7 @@ class MemberSubscriptionController extends Controller
         // Validate request
         $validator = Validator::make($request->all(), [
             'plan_id' => 'required|exists:plans,id',
-            'start_date' => 'required|date',
-            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'start_date' => 'nullable|date',
             'notes' => 'nullable|string',
             'branch_id' => 'required|exists:branches,id',
             'status' => [
@@ -198,8 +203,8 @@ class MemberSubscriptionController extends Controller
             ], 400);
         }
 
-        // Verify plan exists
-        $plan = Plan::find($request->input('plan_id'));
+        // Verify plan exists with duration type relationship
+        $plan = Plan::with('duration_type')->find($request->input('plan_id'));
         if (!$plan) {
             return response()->json([
                 'success' => false,
@@ -218,18 +223,65 @@ class MemberSubscriptionController extends Controller
             ], 404);
         }
 
+        // Check if plan has duration type
+        if (!$plan->duration_type) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Plan duration type not configured',
+                'data' => null
+            ], 400);
+        }
+
+        // Check if member already has an active subscription for this plan
+        $hasActiveSubscription = MemberSubscription::where('member_id', $memberId)
+            ->where('plan_id', $plan->id)
+            ->where('status', 'in_progress')
+            ->exists();
+
+        if ($hasActiveSubscription) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Member already has an active subscription for this plan. Please cancel or wait for the current subscription to expire.',
+                'data' => null
+            ], 400);
+        }
+
+
+        // restrict having two pending
+        $hasPendingSubscription = MemberSubscription::where('member_id', $memberId)
+            ->where('plan_id', $plan->id)
+            ->where('status', 'pending')
+            ->exists();
+
+        if ($hasPendingSubscription) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Member already has a pending subscription for this plan. Please cancel or wait for the current subscription to expire.',
+                'data' => null
+            ], 400);
+        }
+
+
         // Start database transaction
         DB::beginTransaction();
 
         try {
+            // Determine start date - use provided date or current date
+            $startDate = $request->input('start_date')
+                ? Carbon::parse($request->input('start_date'))
+                : Carbon::now();
+
+            // Calculate end date based on plan duration and duration type
+            $endDate = $this->calculateEndDate($startDate, $plan->duration, $plan->duration_type);
+
             // Create subscription
             $subscription = new MemberSubscription([
                 'member_id' => $memberId,
-                'plan_id' => $request->input('plan_id'),
-                'start_date' => $request->input('start_date'),
-                'end_date' => $request->input('end_date'),
+                'plan_id' => $plan->id,
+                'start_date' => $startDate,
+                'end_date' => $endDate,
                 'notes' => $request->input('notes'),
-                'branch_id' => $request->input('branch_id'),
+                'branch_id' => $branch->id,
                 'created_by_id' => Auth::id(),
                 'status' => $request->input('status', 'pending'),
             ]);
@@ -237,7 +289,7 @@ class MemberSubscriptionController extends Controller
             $subscription->save();
 
             // Load relationships
-            $subscription->load(['plan', 'branch', 'created_by', 'member']);
+            $subscription->load(['plan', 'plan.duration_type', 'branch', 'created_by', 'member']);
 
             // Commit transaction
             DB::commit();
@@ -245,7 +297,16 @@ class MemberSubscriptionController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Member subscription created successfully',
-                'data' => $subscription
+                'data' => [
+                    'subscription' => $subscription,
+                    'duration_info' => [
+                        'duration' => $plan->duration,
+                        'duration_type' => $plan->duration_type->unit,
+                        'calculated_start_date' => $startDate->format('Y-m-d'),
+                        'calculated_end_date' => $endDate->format('Y-m-d'),
+                        'total_days' => $startDate->diffInDays($endDate)
+                    ]
+                ]
             ], 201);
         } catch (\Exception $e) {
             // Rollback transaction on error
@@ -286,7 +347,7 @@ class MemberSubscriptionController extends Controller
     {
         try {
             $subscription = MemberSubscription::where('member_id', $memberId)
-                ->with(['plan', 'branch', 'created_by', 'member'])
+                ->with(['plan', 'plan.duration_type', 'branch', 'created_by', 'member'])
                 ->find($id);
 
             if (!$subscription) {
@@ -333,8 +394,13 @@ class MemberSubscriptionController extends Controller
      *         required=false,
      *         @OA\JsonContent(
      *             @OA\Property(property="plan_id", type="integer", example=2),
-     *             @OA\Property(property="start_date", type="string", format="date", example="2024-02-01"),
-     *             @OA\Property(property="end_date", type="string", format="date", example="2025-01-31"),
+     *             @OA\Property(
+     *                 property="start_date",
+     *                 type="string",
+     *                 format="date",
+     *                 description="If provided, end date will be recalculated based on plan duration",
+     *                 example="2024-02-01"
+     *             ),
      *             @OA\Property(property="notes", type="string", example="Updated subscription notes"),
      *             @OA\Property(property="branch_id", type="integer", example=2),
      *             @OA\Property(
@@ -352,8 +418,10 @@ class MemberSubscriptionController extends Controller
      */
     public function update(Request $request, $memberId, $id)
     {
-        // Find subscription
-        $subscription = MemberSubscription::where('member_id', $memberId)->find($id);
+        // Find subscription with plan relationship
+        $subscription = MemberSubscription::where('member_id', $memberId)
+            ->with(['plan.duration_type'])
+            ->find($id);
 
         if (!$subscription) {
             return response()->json([
@@ -367,7 +435,6 @@ class MemberSubscriptionController extends Controller
         $validator = Validator::make($request->all(), [
             'plan_id' => 'nullable|exists:plans,id',
             'start_date' => 'nullable|date',
-            'end_date' => 'nullable|date|after_or_equal:start_date',
             'notes' => 'nullable|string',
             'branch_id' => 'nullable|exists:branches,id',
             'status' => [
@@ -384,9 +451,27 @@ class MemberSubscriptionController extends Controller
             ], 400);
         }
 
-        // Verify plan exists if provided
+        // Check if plan is being changed and member already has active subscription for new plan
+        if ($request->has('plan_id') && $request->input('plan_id') != $subscription->plan_id) {
+            $hasActiveSubscription = MemberSubscription::where('member_id', $memberId)
+                ->where('plan_id', $request->input('plan_id'))
+                ->where('status', 'in_progress')
+                ->where('id', '!=', $id)
+                ->exists();
+
+            if ($hasActiveSubscription) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Member already has an active subscription for this plan. Please cancel the existing subscription first.',
+                    'data' => null
+                ], 400);
+            }
+        }
+
+        // Get the plan (either current or new)
+        $plan = null;
         if ($request->has('plan_id')) {
-            $plan = Plan::find($request->input('plan_id'));
+            $plan = Plan::with('duration_type')->find($request->input('plan_id'));
             if (!$plan) {
                 return response()->json([
                     'success' => false,
@@ -394,6 +479,8 @@ class MemberSubscriptionController extends Controller
                     'data' => null
                 ], 404);
             }
+        } else {
+            $plan = $subscription->plan;
         }
 
         // Verify branch exists if provided
@@ -414,9 +501,31 @@ class MemberSubscriptionController extends Controller
         try {
             // Prepare update data
             $updateData = [];
-            if ($request->has('plan_id')) $updateData['plan_id'] = $request->input('plan_id');
-            if ($request->has('start_date')) $updateData['start_date'] = $request->input('start_date');
-            if ($request->has('end_date')) $updateData['end_date'] = $request->input('end_date');
+
+            // Handle plan update
+            if ($request->has('plan_id')) {
+                $updateData['plan_id'] = $request->input('plan_id');
+
+                // If plan changed, recalculate end date from start date
+                $currentStartDate = $request->has('start_date')
+                    ? Carbon::parse($request->input('start_date'))
+                    : Carbon::parse($subscription->start_date);
+
+                $updateData['end_date'] = $this->calculateEndDate($currentStartDate, $plan->duration, $plan->duration_type);
+            }
+
+            // Handle start date update
+            if ($request->has('start_date')) {
+                $newStartDate = Carbon::parse($request->input('start_date'));
+                $updateData['start_date'] = $newStartDate;
+
+                // Recalculate end date based on current plan
+                if (!isset($updateData['end_date'])) {
+                    $updateData['end_date'] = $this->calculateEndDate($newStartDate, $plan->duration, $plan->duration_type);
+                }
+            }
+
+            // Handle other fields
             if ($request->has('notes')) $updateData['notes'] = $request->input('notes');
             if ($request->has('branch_id')) $updateData['branch_id'] = $request->input('branch_id');
             if ($request->has('status')) $updateData['status'] = $request->input('status');
@@ -425,7 +534,7 @@ class MemberSubscriptionController extends Controller
             $subscription->update($updateData);
 
             // Load relationships
-            $subscription->load(['plan', 'branch', 'created_by', 'member']);
+            $subscription->load(['plan', 'plan.duration_type', 'branch', 'created_by', 'member']);
 
             // Commit transaction
             DB::commit();
@@ -586,7 +695,7 @@ class MemberSubscriptionController extends Controller
             $subscription->update(['status' => $newStatus]);
 
             // Load relationships
-            $subscription->load(['plan', 'branch', 'created_by', 'member']);
+            $subscription->load(['plan', 'plan.duration_type', 'branch', 'created_by', 'member']);
 
             // Commit transaction
             DB::commit();
@@ -641,7 +750,7 @@ class MemberSubscriptionController extends Controller
             // Active subscriptions are those with status 'in_progress'
             $activeSubscriptions = MemberSubscription::where('member_id', $memberId)
                 ->where('status', 'in_progress')
-                ->with(['plan', 'branch', 'created_by'])
+                ->with(['plan', 'plan.duration_type', 'branch', 'created_by'])
                 ->orderBy('created_at', 'desc')
                 ->get();
 
@@ -671,12 +780,18 @@ class MemberSubscriptionController extends Controller
      *         required=true,
      *         @OA\Schema(type="integer")
      *     ),
+     *     @OA\Parameter(
+     *         name="include_duration_info",
+     *         in="query",
+     *         required=false,
+     *         @OA\Schema(type="boolean", default=false)
+     *     ),
      *     @OA\Response(response=200, description="Current subscription"),
      *     @OA\Response(response=404, description="Member not found or no active subscription"),
      *     @OA\Response(response=500, description="Internal server error")
      * )
      */
-    public function currentSubscription($memberId)
+    public function currentSubscription(Request $request, $memberId)
     {
         try {
             $member = Member::find($memberId);
@@ -692,9 +807,11 @@ class MemberSubscriptionController extends Controller
             // Get the most recent active subscription
             $currentSubscription = MemberSubscription::where('member_id', $memberId)
                 ->where('status', 'in_progress')
-                ->whereDate('end_date', '>=', now()) // Not expired
-                ->orWhereNull('end_date') // Or no end date
-                ->with(['plan', 'branch', 'created_by'])
+                ->where(function ($query) {
+                    $query->whereDate('end_date', '>=', now()) // Not expired
+                        ->orWhereNull('end_date'); // Or no end date
+                })
+                ->with(['plan', 'plan.duration_type', 'branch', 'created_by'])
                 ->orderBy('created_at', 'desc')
                 ->first();
 
@@ -706,10 +823,30 @@ class MemberSubscriptionController extends Controller
                 ], 404);
             }
 
+            $responseData = $currentSubscription;
+
+            // Include duration info if requested
+            if ($request->boolean('include_duration_info') && $currentSubscription->plan) {
+                $daysRemaining = 0;
+                if ($currentSubscription->end_date) {
+                    $endDate = Carbon::parse($currentSubscription->end_date);
+                    $daysRemaining = max(0, now()->diffInDays($endDate, false));
+                }
+
+                $responseData = [
+                    'subscription' => $currentSubscription,
+                    'duration_info' => [
+                        'days_remaining' => $daysRemaining,
+                        'is_expired' => $daysRemaining <= 0,
+                        'percentage_completed' => $this->calculateSubscriptionProgress($currentSubscription)
+                    ]
+                ];
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Current member subscription retrieved successfully',
-                'data' => $currentSubscription
+                'data' => $responseData
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
@@ -718,5 +855,59 @@ class MemberSubscriptionController extends Controller
                 'data' => null
             ], 500);
         }
+    }
+
+    /**
+     * Calculate end date based on start date, duration, and duration type
+     */
+    private function calculateEndDate(Carbon $startDate, int $duration, $durationType): Carbon
+    {
+        $unit = $durationType->unit ?? 'months'; // Default to months if not specified
+
+        switch ($unit) {
+            case 'days':
+                return $startDate->copy()->addDays($duration);
+
+            case 'weeks':
+                return $startDate->copy()->addWeeks($duration);
+
+            case 'months':
+                return $startDate->copy()->addMonths($duration);
+
+            case 'years':
+                return $startDate->copy()->addYears($duration);
+
+            default:
+                return $startDate->copy()->addMonths($duration); // Default fallback
+        }
+    }
+
+    /**
+     * Calculate subscription progress percentage
+     */
+    private function calculateSubscriptionProgress($subscription): float
+    {
+        if (!$subscription->start_date || !$subscription->end_date) {
+            return 0;
+        }
+
+        $startDate = Carbon::parse($subscription->start_date);
+        $endDate = Carbon::parse($subscription->end_date);
+        $now = Carbon::now();
+
+        // If subscription hasn't started yet
+        if ($now->lt($startDate)) {
+            return 0;
+        }
+
+        // If subscription has ended
+        if ($now->gt($endDate)) {
+            return 100;
+        }
+
+        $totalDuration = $startDate->diffInSeconds($endDate);
+        $elapsedDuration = $startDate->diffInSeconds($now);
+
+        return min(100, max(0, ($elapsedDuration / $totalDuration) * 100));
     }
 }

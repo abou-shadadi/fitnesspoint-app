@@ -4,8 +4,8 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
-use App\Models\Invoice\InvoiceTaxRate;
-class InvoiceTaxRateSeeder extends Seeder
+use App\Models\Invoice\TaxRate;
+class TaxRateSeeder extends Seeder
 {
     /**
      * Run the database seeds.
@@ -33,8 +33,8 @@ class InvoiceTaxRateSeeder extends Seeder
 
 
         foreach ($taxRates as $taxRate) {
-            if (!InvoiceTaxRate::where('id', $taxRate['id'])->exists()) {
-                InvoiceTaxRate::create($taxRate);
+            if (!TaxRate::where('id', $taxRate['id'])->exists()) {
+                TaxRate::create($taxRate);
             }
         }
     }

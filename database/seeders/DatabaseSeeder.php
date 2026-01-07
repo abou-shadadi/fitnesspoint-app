@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 // use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use CellSeeder;
 
 class DatabaseSeeder extends Seeder
 {
@@ -13,7 +14,7 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call([
-            // lets seed the countries stored in location folder
+          //  lets seed the countries stored in location folder
             \Database\Seeders\Location\CountrySeeder::class,
             \Database\Seeders\Location\ProvinceSeeder::class,
             \Database\Seeders\Location\DistrictSeeder::class,
@@ -32,8 +33,9 @@ class DatabaseSeeder extends Seeder
             \Database\Seeders\CheckInMethodSeeder::class,
             \Database\Seeders\PlanSeeder::class,
             \Database\Seeders\RateTypeSeeder::class,
-            \Database\Seeders\InvoiceTaxRateSeeder::class,
-            \Database\Seeders\DiscountTypeSeeder::class
+            \Database\Seeders\TaxRateSeeder::class,
+            \Database\Seeders\DiscountTypeSeeder::class,
+            \Database\Seeders\BankSeeder::class
         ]);
     }
 }

@@ -23,7 +23,6 @@ return new class extends Migration
             $table->json('phone')->nullable();
             $table->string('email')->nullable()->unique();
             $table->text('address')->nullable();
-            $table->foreignId('branch_id')->nullable()->constrained('branches');
             $table->foreignId('created_by_id')->nullable()->constrained('users');
             $table->enum('status', ['active', 'inactive'])->default('active');
             $table->timestamps();

@@ -19,7 +19,7 @@ class MemberImportController extends Controller
 {
     /**
      * @OA\Get(
-     *     path="/api/imports/member/member-imports",
+     *     path="/api/imports/member",
      *     tags={"Import | Members | Member Import"},
      *     security={{"sanctum": {}}},
      *     summary="Get all member imports",
@@ -51,7 +51,7 @@ class MemberImportController extends Controller
 
     /**
      * @OA\Get(
-     *     path="/api/imports/member/member-imports/{id}",
+     *     path="/api/imports/member/{id}",
      *     tags={"Import | Members | Member Import"},
      *     security={{"sanctum": {}}},
      *     summary="Get a member import by ID",
@@ -96,7 +96,7 @@ class MemberImportController extends Controller
 
     /**
      * @OA\Post(
-     *     path="/api/imports/member/member-imports",
+     *     path="/api/imports/member",
      *     tags={"Import | Members | Member Import"},
      *     security={{"sanctum": {}}},
      *     summary="Import members",
@@ -114,9 +114,21 @@ class MemberImportController extends Controller
      *                     example="members.csv"
      *                 ),
      *                 @OA\Property(
-     *                     property="company_id",
+     *                     property="member_subscription_id",
      *                     type="integer",
-     *                     description="Company ID (optional)",
+     *                     description="Member subscription ID (optional)",
+     *                     example=1
+     *                 ),
+    *                 @OA\Property(
+     *                     property="plan_id",
+     *                     type="integer",
+     *                     description="Plan ID (optional- mainly for members to be registered in a certain domain)",
+     *                     example=1
+     *                 ),
+     *                 @OA\Property(
+     *                     property="company_subscription_id",
+     *                     type="integer",
+     *                     description="Company subscription ID (optional)",
      *                     example=1
      *                 ),
      *                 @OA\Property(
@@ -145,8 +157,10 @@ class MemberImportController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'file' => 'required|file|mimes:xlsx,xls,csv',
-            'company_id' => 'nullable|exists:companies,id',
             'branch_id' => 'required|exists:branches,id',
+            'member_subscription_id' => 'nullable|exists:member_subscriptions,id',
+            'plan_id' => 'nullable|exists:member_subscriptions,id',
+            'company_subscription_id' => 'nullable|exists:company_subscriptions,id',
         ]);
 
         if ($validator->fails()) {
@@ -164,8 +178,9 @@ class MemberImportController extends Controller
             // Create a new member import record
             $memberImport = MemberImport::create([
                 'file' => $filePath,
-                'company_id' => $request->company_id,
                 'branch_id' => $request->branch_id,
+                'member_subscription_id' => $request->member_subscription_id,
+                'company_subscription_id' => $request->company_subscription_id,
                 'created_by_id' => Auth::id(),
                 'status' => 'pending',
             ]);
@@ -173,9 +188,8 @@ class MemberImportController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'File stored successfully. It will be processed shortly.',
-                'data' => $memberImport->load(['user', 'company', 'branch'])
+                'data' => $memberImport->load(['user', 'branch'])
             ], 200);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -185,9 +199,10 @@ class MemberImportController extends Controller
         }
     }
 
+
     /**
      * @OA\Put(
-     *     path="/api/imports/member/member-imports/{id}",
+     *     path="/api/imports/member/{id}",
      *     tags={"Import | Members | Member Import"},
      *     security={{"sanctum": {}}},
      *     summary="Update member import",
@@ -274,7 +289,6 @@ class MemberImportController extends Controller
                 'message' => 'Member import updated successfully',
                 'data' => $memberImport->load(['user', 'company', 'branch'])
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -286,7 +300,7 @@ class MemberImportController extends Controller
 
     /**
      * @OA\Delete(
-     *     path="/api/imports/member/member-imports/{id}",
+     *     path="/api/imports/member/{id}",
      *     tags={"Import | Members | Member Import"},
      *     security={{"sanctum": {}}},
      *     summary="Delete member import",
@@ -344,7 +358,6 @@ class MemberImportController extends Controller
                 'message' => 'Member import deleted successfully',
                 'data' => null
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -354,7 +367,7 @@ class MemberImportController extends Controller
         }
     }
 
-     /**
+    /**
      * @OA\Post(
      *     path="/api/imports/member/{id}/retry",
      *     tags={"Import | Members | Member Import"},
@@ -408,7 +421,6 @@ class MemberImportController extends Controller
                 'message' => 'Import retry initiated',
                 'data' => $memberImport
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -468,7 +480,6 @@ class MemberImportController extends Controller
             $filename = 'member_import_' . $id . '_' . Carbon::now()->format('Ymd_His') . '.' . pathinfo($filePath, PATHINFO_EXTENSION);
 
             return Response::download($filePath, $filename);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -528,7 +539,6 @@ class MemberImportController extends Controller
             $filename = 'failed_member_import_' . $id . '_' . Carbon::now()->format('Ymd_His') . '.' . pathinfo($filePath, PATHINFO_EXTENSION);
 
             return Response::download($filePath, $filename);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -537,13 +547,23 @@ class MemberImportController extends Controller
             ], 500);
         }
     }
-
     /**
      * @OA\Get(
      *     path="/api/imports/member/sample",
      *     tags={"Import | Members | Member Import"},
      *     security={{"sanctum": {}}},
      *     summary="Download sample import file",
+     *     @OA\Parameter(
+     *         name="type",
+     *         in="query",
+     *         description="Type of member: corporate or individual",
+     *         required=false,
+     *         @OA\Schema(
+     *             type="string",
+     *             enum={"corporate", "individual"},
+     *             default="corporate"
+     *         )
+     *     ),
      *     @OA\Response(
      *         response=200,
      *         description="Sample file downloaded successfully",
@@ -555,13 +575,19 @@ class MemberImportController extends Controller
      *     @OA\Response(response=500, description="Internal server error")
      * )
      */
-    public function downloadSample()
+    public function downloadSample(Request $request)
     {
         try {
-            $filename = 'member_import_sample_' . Carbon::now()->format('Ymd_His') . '.xlsx';
+            $type = $request->input('type', 'corporate');
 
-            return Excel::download(new MemberImportSampleExport(), $filename);
+            // Validate type parameter
+            if (!in_array($type, ['corporate', 'individual'])) {
+                $type = 'corporate';
+            }
 
+            $filename = 'member_import_sample_' . $type . '_' . Carbon::now()->format('Ymd_His') . '.xlsx';
+
+            return Excel::download(new MemberImportSampleExport($type), $filename);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -634,7 +660,6 @@ class MemberImportController extends Controller
                 'message' => 'Bulk status updated successfully',
                 'data' => ['updated_count' => $updatedCount]
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,

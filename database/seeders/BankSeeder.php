@@ -19,7 +19,7 @@ class BankSeeder extends Seeder
 
         try {
             // First, ensure we have Rwandan Franc currency
-            $rwfCurrency = Currency::where('code', 'RWF')->first();
+            $rwfCurrency = Currency::find(1);
 
             if (!$rwfCurrency) {
                 $this->command->error('RWF currency not found! Please seed currencies first.');

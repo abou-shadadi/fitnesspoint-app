@@ -14,13 +14,13 @@ return new class extends Migration
         Schema::create('company_subscription_invoice_bank_accounts', function (Blueprint $table) {
             $table->id();
 
-            $table->unsignedBigInteger('invoice_id');
+            $table->unsignedBigInteger('company_subscription_invoice_id');
             $table->unsignedBigInteger('bank_account_id');
 
             $table->enum('status', ['active', 'inactive'])->default('active');
             $table->timestamps();
 
-            $table->foreign('invoice_id', 'fk_csiba_invoice')
+            $table->foreign('company_subscription_invoice_id', 'fk_csiba_invoice')
                 ->references('id')
                 ->on('company_subscription_invoices')
                 ->cascadeOnDelete();

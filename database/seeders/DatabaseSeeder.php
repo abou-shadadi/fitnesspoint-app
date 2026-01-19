@@ -19,8 +19,8 @@ class DatabaseSeeder extends Seeder
             \Database\Seeders\Location\ProvinceSeeder::class,
             \Database\Seeders\Location\DistrictSeeder::class,
             \Database\Seeders\Location\SectorSeeder::class,
-            \Database\Seeders\Location\CellSeeder::class,
-            \Database\Seeders\Location\VillageSeeder::class,
+         //   \Database\Seeders\Location\CellSeeder::class,
+           // \Database\Seeders\Location\VillageSeeder::class,
             \Database\Seeders\UserSeeder::class,
             \Database\Seeders\FeatureSeeder::class,
             \Database\Seeders\BranchSeeder::class,
@@ -35,7 +35,8 @@ class DatabaseSeeder extends Seeder
             \Database\Seeders\RateTypeSeeder::class,
             \Database\Seeders\TaxRateSeeder::class,
             \Database\Seeders\DiscountTypeSeeder::class,
-            \Database\Seeders\BankSeeder::class
+            \Database\Seeders\BankSeeder::class,
+            \Database\Seeders\CompanyDesignationSeeder::class
         ]);
     }
 }

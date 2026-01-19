@@ -16,11 +16,16 @@ return new class extends Migration
             $table->string('file');
             $table->string('failed_import_file')->nullable();
             $table->string('imported_file')->nullable();
-            $table->foreignId('company_id')->nullable()->constrained(); // not mandotory
+
             $table->foreignId('branch_id')->constrained('branches'); // always to be provided
+            // member_subscription_id
+            $table->foreignId('member_subscription_id')->nullable()->constrained();
+            // company_subscription_id
+            $table->foreignId('company_subscription_id')->nullable()->constrained();
+
             $table->foreignId('created_by_id')->constrained('users'); // from Auth::user()
             $table->json('data')->nullable();
-            $table->enum('status', ['pending', 'in_progress', 'completed', 'failed'])->default('pending');
+            $table->enum('status', ['pending', 'in_progress', 'completed', 'failed', 'completed_with_errors'])->default('pending');
             $table->timestamps();
         });
     }

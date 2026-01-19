@@ -17,5 +17,15 @@ class BankAccount extends Model
         return $this->belongsTo(Bank::class);
     }
 
+    public function currency()
+    {
+        return $this->belongsTo(\App\Models\Currency::class);
+    }
+
+    public function created_by()
+    {
+        return $this->belongsTo(\App\Models\User::class);
+    }
+
 
 }

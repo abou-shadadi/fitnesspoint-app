@@ -9,14 +9,13 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-// use carbon
 use Carbon\Carbon;
 
 class MemberImportLogController extends Controller
 {
     /**
      * @OA\Get(
-     *     path="/api/imports/member/member-imports/{memberImportId}/logs",
+     *     path="/api/imports/member/{memberImportId}/logs",
      *     tags={"Import | Members | Member Import | Log"},
      *     security={{"sanctum": {}}},
      *     @OA\Parameter(
@@ -55,7 +54,7 @@ class MemberImportLogController extends Controller
 
     /**
      * @OA\Get(
-     *     path="/api/imports/member/member-imports/{memberImportId}/logs/{logId}",
+     *     path="/api/imports/member/{memberImportId}/logs/{logId}",
      *     tags={"Import | Members | Member Import | Log"},
      *     security={{"sanctum": {}}},
      *     summary="Get a member import log by ID",
@@ -106,7 +105,7 @@ class MemberImportLogController extends Controller
 
     /**
      * @OA\Put(
-     *     path="/api/imports/member/member-imports/{memberImportId}/logs/{logId}",
+     *     path="/api/imports/member/{memberImportId}/logs/{logId}",
      *     tags={"Import | Members | Member Import | Log"},
      *     security={{"sanctum": {}}},
      *     summary="Update member import log",
@@ -192,8 +191,150 @@ class MemberImportLogController extends Controller
     }
 
     /**
+     * @OA\Put(
+     *     path="/api/imports/member/{memberImportId}/logs/{logId}/data",
+     *     tags={"Import | Members | Member Import | Log"},
+     *     security={{"sanctum": {}}},
+     *     summary="Update member import log data",
+     *     description="Update the row data in import log before retrying",
+     *     @OA\Parameter(
+     *         name="memberImportId",
+     *         in="path",
+     *         required=true,
+     *         @OA\Schema(type="integer", example=1)
+     *     ),
+     *     @OA\Parameter(
+     *         name="logId",
+     *         in="path",
+     *         required=true,
+     *         @OA\Schema(type="integer", example=1)
+     *     ),
+     *     @OA\RequestBody(
+     *         required=true,
+     *         @OA\JsonContent(
+     *             required={"data"},
+     *             @OA\Property(
+     *                 property="data",
+     *                 type="object",
+     *                 description="Updated row data",
+     *                 example={
+     *                     "reference": "MBR-2024-001",
+     *                     "first_name": "John",
+     *                     "last_name": "Doe",
+     *                     "gender": "Male",
+     *                     "national_id_number": "1199999999999999",
+     *                     "date_of_birth": "1990-01-15",
+     *                     "phone": "0788123456",
+     *                     "email": "john.doe@example.com",
+     *                     "address": "Kigali, Rwanda",
+     *                     "membership_start_date": "2024-01-01"
+     *                 }
+     *             ),
+     *             @OA\Property(
+     *                 property="update_comment",
+     *                 type="string",
+     *                 description="Comment about what was updated",
+     *                 example="Fixed phone number format"
+     *             )
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Member import log data updated successfully",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="success", type="boolean", example=true),
+     *             @OA\Property(property="message", type="string", example="Member import log data updated successfully"),
+     *             @OA\Property(property="data", type="object")
+     *         )
+     *     ),
+     *     @OA\Response(response=400, description="Validation error"),
+     *     @OA\Response(response=404, description="Member import log not found"),
+     *     @OA\Response(response=500, description="Internal server error")
+     * )
+     */
+    public function updateData(Request $request, $memberImportId, $logId)
+    {
+        $validator = Validator::make($request->all(), [
+            'data' => 'required|array',
+            'data.first_name' => 'required|string|max:255',
+            'data.last_name' => 'required|string|max:255',
+            'data.gender' => 'nullable|in:male,female,Male,Female,other,Other',
+            'data.date_of_birth' => 'nullable',
+            'data.email' => 'nullable|email',
+            'data.national_id_number' => 'nullable',
+            'data.reference' => 'nullable|string',
+            'data.phone' => 'nullable',
+            'data.membership_start_date' => 'nullable',
+            'data.address' => 'nullable|string|max:500',
+            'update_comment' => 'nullable|string|max:500',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error',
+                'errors' => $validator->errors()
+            ], 400);
+        }
+
+        try {
+            $importLog = MemberImportLog::with('member_import')
+                ->where('member_import_id', $memberImportId)
+                ->find($logId);
+
+            if (!$importLog) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Member import log not found',
+                ], 404);
+            }
+
+            // Get current data
+            $currentData = $importLog->data ?? [];
+
+            // Merge with new data (new data overrides old)
+            $updatedData = array_merge($currentData, $request->data);
+
+            // Add update metadata
+            $updateMetadata = [
+                'updated_at' => Carbon::now()->toDateTimeString(),
+                'updated_by' => auth()->id(),
+                'update_comment' => $request->input('update_comment', 'Data updated manually'),
+                'previous_data' => $currentData // Keep previous data for reference
+            ];
+
+            // Update the log
+            $importLog->update([
+                'data' => $updatedData,
+                'log_message' => $importLog->log_message . ' | Data updated: ' . $request->input('update_comment', 'Manual update'),
+                'is_resolved' => false, // Mark as unresolved since data changed
+            ]);
+
+            // Store update metadata separately
+            $importLog->update_metadata = $updateMetadata;
+            $importLog->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Member import log data updated successfully',
+                'data' => [
+                    'log' => $importLog,
+                    'update_metadata' => $updateMetadata,
+                    'changes' => $this->getDataChanges($currentData, $updatedData)
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * @OA\Delete(
-     *     path="/api/imports/member/member-imports/{memberImportId}/logs/{logId}",
+     *     path="/api/imports/member/{memberImportId}/logs/{logId}",
      *     tags={"Import | Members | Member Import | Log"},
      *     security={{"sanctum": {}}},
      *     summary="Delete member import log",
@@ -251,6 +392,7 @@ class MemberImportLogController extends Controller
             ], 500);
         }
     }
+
     /**
      * @OA\Post(
      *     path="/api/imports/member/{memberImportId}/logs",
@@ -371,10 +513,7 @@ class MemberImportLogController extends Controller
      *         @OA\JsonContent(
      *             @OA\Property(property="success", type="boolean", example=true),
      *             @OA\Property(property="message", type="string", example="Row processed successfully"),
-     *             @OA\Property(property="data", type="object",
-     *                 @OA\Property(property="member", type="object", description="Created/Updated member data"),
-     *                 @OA\Property(property="log", type="object", description="Updated log data")
-     *             )
+     *             @OA\Property(property="data", type="object")
      *         )
      *     ),
      *     @OA\Response(response=404, description="Log not found"),
@@ -398,32 +537,31 @@ class MemberImportLogController extends Controller
             // Get the failed row data
             $rowData = $importLog->data;
 
-            if (!$rowData) {
+            if (!$rowData || !is_array($rowData)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'No row data found in log',
+                    'message' => 'No valid row data found in log',
                 ], 400);
             }
 
             DB::beginTransaction();
 
             try {
+                // Get the original import
+                $memberImport = $importLog->member_import;
+
                 // Create a new MembersImport instance
                 $membersImport = new MemberImport(
-                    $importLog->member_import->company_id,
-                    $importLog->member_import->branch_id,
-                    $importLog->member_import->created_by_id,
-                    $importLog->member_import->id
+                    $memberImport->branch_id,
+                    $memberImport->created_by_id,
+                    $memberImport->id,
+                    $memberImport->member_subscription_id,
+                    $memberImport->company_subscription_id
                 );
 
                 // Process the single row
-                $rowCollection = collect([$rowData]);
-                $rowNumber = 0;
-
-                foreach ($rowCollection as $row) {
-                    // Manually process the row
-                    $this->processSingleRow($membersImport, $row, $rowNumber);
-                }
+                $row = collect($rowData);
+                $processedMember = $this->processSingleRow($membersImport, $row);
 
                 // Update log as resolved
                 $importLog->update([
@@ -437,9 +575,11 @@ class MemberImportLogController extends Controller
                     'success' => true,
                     'message' => 'Row processed successfully',
                     'data' => [
+                        'member' => $processedMember,
                         'log' => $importLog,
                     ]
                 ]);
+
             } catch (\Exception $e) {
                 DB::rollBack();
 
@@ -454,6 +594,7 @@ class MemberImportLogController extends Controller
 
                 throw $e;
             }
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -465,11 +606,8 @@ class MemberImportLogController extends Controller
     /**
      * Process a single row (helper method)
      */
-    private function processSingleRow($membersImport, $row, $rowNumber)
+    private function processSingleRow($membersImport, $row)
     {
-        // Use reflection to call protected methods or recreate the logic
-        // For simplicity, we'll recreate the essential logic here
-
         // Validate required fields
         if (empty($row['first_name']) || empty($row['last_name'])) {
             throw new \Exception('First name and last name are required');
@@ -481,43 +619,45 @@ class MemberImportLogController extends Controller
         // Check if member exists
         $this->checkMemberExistence($row);
 
-        // Prepare phone data
-        $phone = null;
-        if (!empty($row['phone_code']) && !empty($row['phone_number'])) {
-            $phone = [
-                'code' => $this->formatPhoneCode($row['phone_code']),
-                'number' => $this->formatPhoneNumber($row['phone_number'])
-            ];
-        }
+        // Parse phone
+        $phone = $membersImport->parsePhone($row['phone'] ?? null);
 
-        // Create member
+        // Prepare member data
         $memberData = [
-            'reference' => $row['reference'] ?? $this->generateMemberReference(),
+            'reference' => $row['reference'] ?? $membersImport->generateMemberReference(),
             'first_name' => $row['first_name'],
             'last_name' => $row['last_name'],
             'gender' => $gender,
-            'date_of_birth' => $row['date_of_birth'] ?? null,
+            'date_of_birth' => $membersImport->parseDate($row['date_of_birth'] ?? null),
             'email' => $row['email'] ?? null,
             'national_id_number' => $row['national_id_number'] ?? null,
             'phone' => $phone,
             'address' => $row['address'] ?? null,
-            'status' => isset($row['status']) ? strtolower($row['status']) : 'active',
             'created_by_id' => $membersImport->user->id,
+            'branch_id' => $membersImport->branch->id,
         ];
 
-        // Add company and branch if applicable
-        if ($membersImport->company) {
-            $memberData['company_id'] = $membersImport->company->id;
+        // Add subscription references if provided
+        if ($membersImport->memberSubscriptionId) {
+            $memberData['member_subscription_id'] = $membersImport->memberSubscriptionId;
         }
 
-        if ($membersImport->branch) {
-            $memberData['branch_id'] = $membersImport->branch->id;
+        if ($membersImport->companySubscriptionId) {
+            $memberData['company_subscription_id'] = $membersImport->companySubscriptionId;
+        }
+
+        // Parse membership start date for individual members
+        if (isset($row['membership_start_date'])) {
+            $startDate = $membersImport->parseDate($row['membership_start_date']);
+            if ($startDate) {
+                $memberData['membership_start_date'] = $startDate;
+            }
         }
 
         return \App\Models\Member\Member::create($memberData);
     }
 
-    // Helper methods for row processing
+    // Helper methods
     private function processGender($gender)
     {
         if (empty($gender)) {
@@ -553,26 +693,29 @@ class MemberImportLogController extends Controller
         }
     }
 
-    private function formatPhoneCode($code)
+    /**
+     * Helper method to get changes between two data arrays
+     */
+    private function getDataChanges($oldData, $newData)
     {
-        $code = trim($code);
-        if (!str_starts_with($code, '+')) {
-            $code = '+' . $code;
+        $changes = [];
+
+        // Get all unique keys
+        $allKeys = array_unique(array_merge(array_keys($oldData), array_keys($newData)));
+
+        foreach ($allKeys as $key) {
+            $oldValue = $oldData[$key] ?? null;
+            $newValue = $newData[$key] ?? null;
+
+            if ($oldValue != $newValue) {
+                $changes[$key] = [
+                    'old' => $oldValue,
+                    'new' => $newValue,
+                    'changed' => true
+                ];
+            }
         }
-        return $code;
-    }
 
-    private function formatPhoneNumber($number)
-    {
-        return preg_replace('/\D/', '', $number);
-    }
-
-    private function generateMemberReference()
-    {
-        do {
-            $reference = 'MBR-' . date('Y') . '-' . str_pad(rand(1, 99999), 5, '0', STR_PAD_LEFT);
-        } while (\App\Models\Member\Member::where('reference', $reference)->exists());
-
-        return $reference;
+        return $changes;
     }
 }

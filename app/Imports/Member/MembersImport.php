@@ -9,15 +9,14 @@ use App\Models\Branch\Branch;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\ValidationException;
 use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
-use Maatwebsite\Excel\Concerns\WithValidation;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Carbon\Carbon;
 
-class MembersImport implements ToCollection, WithHeadingRow, WithValidation
+class MembersImport implements ToCollection, WithHeadingRow
 {
     protected $predefinedColumns = [
         'reference',
@@ -26,25 +25,20 @@ class MembersImport implements ToCollection, WithHeadingRow, WithValidation
         'gender',
         'national_id_number',
         'date_of_birth',
-        'phone_code',
-        'phone_number',
+        'phone',
         'email',
         'address',
-        'status',
+        'membership_start_date', // For individual members
     ];
 
-    public $company, $branch, $user, $importId;
+    public $branch, $user, $importId;
+    public $memberSubscriptionId, $companySubscriptionId;
     protected $failedRows = [];
+    protected $successCount = 0;
+    protected $failedCount = 0;
 
-    public function __construct($companyId = null, $branchId, $userId, $importId = null)
+    public function __construct($branchId, $userId, $importId = null, $memberSubscriptionId = null, $companySubscriptionId = null)
     {
-        if ($companyId) {
-            $this->company = Company::find($companyId);
-            if (!$this->company) {
-                throw new \Exception('Company not found');
-            }
-        }
-
         $this->branch = Branch::find($branchId);
         if (!$this->branch) {
             throw new \Exception('Branch not found');
@@ -56,34 +50,51 @@ class MembersImport implements ToCollection, WithHeadingRow, WithValidation
         }
 
         $this->importId = $importId;
+        $this->memberSubscriptionId = $memberSubscriptionId;
+        $this->companySubscriptionId = $companySubscriptionId;
     }
 
     public function collection(Collection $rows)
     {
         Log::info('Starting Member Import Collection...');
-        DB::beginTransaction();
-        try {
-            foreach ($rows as $rowNumber => $row) {
-                if ($rowNumber === 0) continue; // Skip header row
-                $this->processRow($row, $rowNumber);
+
+        // Reset counters
+        $this->successCount = 0;
+        $this->failedCount = 0;
+
+        // Process each row independently
+        foreach ($rows as $rowNumber => $row) {
+            if ($rowNumber === 0) {
+                // Skip header row
+                continue;
             }
-            DB::commit();
-            Log::info('Member import completed successfully');
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Member import failed: ' . $e->getMessage());
-            throw $e;
+
+            // Process each row independently
+            $this->processRow($row, $rowNumber);
         }
+
+        Log::info("Member import completed. Success: {$this->successCount}, Failed: {$this->failedCount}");
     }
 
     private function processRow($row, $rowNumber)
     {
         $importComment = '';
-        Log::info("Processing row {$rowNumber}: " . json_encode($row));
+        $excelRowNumber = $rowNumber + 1; // Excel rows are 1-indexed
+        Log::info("Processing row {$excelRowNumber}");
 
         try {
-            // Perform validation
-            $this->validateRow($row, $rowNumber);
+            // Skip empty rows (where all required fields are empty)
+            if ($this->isRowEmpty($row)) {
+                Log::info("Skipping empty row {$excelRowNumber}");
+                return;
+            }
+
+            // Validate only this row
+            $validationResult = $this->validateSingleRow($row, $excelRowNumber);
+
+            if (!$validationResult['valid']) {
+                throw new \Exception($validationResult['errors']);
+            }
 
             // Process gender
             $gender = $this->processGender($row);
@@ -96,36 +107,117 @@ class MembersImport implements ToCollection, WithHeadingRow, WithValidation
             // Check if member exists
             $this->checkMemberExistence($row);
 
-            // Create member
-            $member = $this->createMember($row, $gender);
+            // Parse phone
+            $phone = $this->parsePhone($row['phone'] ?? null);
 
-            Log::info("Successfully created member: {$member->reference}");
+            // Create member in a transaction for this row only
+            DB::beginTransaction();
+            try {
+                $member = $this->createMember($row, $gender, $phone);
+                DB::commit();
+
+                Log::info("Successfully created member: {$member->reference}");
+                $this->successCount++;
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw new \Exception($e->getMessage());
+            }
 
         } catch (\Exception $e) {
-            $this->handleRowError($row, $rowNumber, $e->getMessage(), $importComment);
-            throw $e; // Stop processing this row
+            // Log error and continue processing other rows
+            $this->handleRowError($row, $excelRowNumber, $e->getMessage(), $importComment);
+            $this->failedCount++;
+
+            // Continue to next row - don't throw exception
+            return;
         }
+    }
+
+    private function validateSingleRow($row, $rowNumber)
+    {
+        // Convert row to array for validation
+        $rowData = $row->toArray();
+
+        // Define validation rules for this specific row
+        $rules = [
+            'first_name' => 'required|string|max:255',
+            'last_name' => 'required|string|max:255',
+            'gender' => 'nullable|in:male,female,Male,Female,M,F,other,Other',
+            'date_of_birth' => 'nullable',
+            'email' => 'nullable|email|unique:members,email',
+            'national_id_number' => 'nullable',
+            'reference' => 'nullable|string|unique:members,reference',
+            'phone' => 'nullable',
+            'membership_start_date' => 'nullable|date',
+        ];
+
+        // Custom error messages
+        $customMessages = [
+            'first_name.required' => 'First name is required',
+            'last_name.required' => 'Last name is required',
+            'gender.in' => 'Gender must be Male, Female, or Other',
+            'email.email' => 'Email must be a valid email address',
+            'email.unique' => 'Email already exists',
+            'reference.unique' => 'Reference number already exists',
+            'membership_start_date.date' => 'Membership start date must be a valid date',
+        ];
+
+        // Validate the row
+        $validator = Validator::make($rowData, $rules, $customMessages);
+
+        if ($validator->fails()) {
+            // Collect all error messages for this row
+            $errorMessages = [];
+            foreach ($validator->errors()->all() as $error) {
+                $errorMessages[] = $error;
+            }
+
+            return [
+                'valid' => false,
+                'errors' => "Row {$rowNumber}: " . implode(' | ', $errorMessages)
+            ];
+        }
+
+        return ['valid' => true, 'errors' => null];
+    }
+
+    private function isRowEmpty($row)
+    {
+        $requiredFields = ['first_name', 'last_name'];
+
+        foreach ($requiredFields as $field) {
+            if (!empty($row[$field])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function handleRowError($row, $rowNumber, $errorMessage, $importComment)
     {
-        $row['row'] = $rowNumber + 1;
-        $row['column'] = $this->getColumnFromError($errorMessage);
-        $row['comment'] = $importComment ?: $errorMessage;
+        $rowData = $row->toArray();
+        $rowData['row'] = $rowNumber;
+        $rowData['comment'] = $importComment ?: $errorMessage;
 
-        Log::error("Error in row {$row['row']}, column {$row['column']}: {$row['comment']}");
-        $this->logFailedRow($row, $rowNumber, $errorMessage);
+        Log::error("Error in row {$rowNumber}: {$errorMessage}");
+        $this->logFailedRow($rowData, $rowNumber, $errorMessage);
     }
 
-    private function logFailedRow($row, $rowNumber, $errorMessage)
+    private function logFailedRow($rowData, $rowNumber, $errorMessage)
     {
         if ($this->importId) {
-            MemberImportLog::create([
-                'log_message' => "Error in row $rowNumber: $errorMessage",
-                'member_import_id' => $this->importId,
-                'is_resolved' => false,
-                'data' => $row,
-            ]);
+            try {
+                MemberImportLog::create([
+                    'log_message' => "Error in row {$rowNumber}: {$errorMessage}",
+                    'member_import_id' => $this->importId,
+                    'is_resolved' => false,
+                    'data' => $rowData,
+                ]);
+            } catch (\Exception $e) {
+                Log::error("Failed to create import log: " . $e->getMessage());
+            }
         }
     }
 
@@ -134,59 +226,9 @@ class MembersImport implements ToCollection, WithHeadingRow, WithValidation
         return 1;
     }
 
-    public function rules(): array
-    {
-        return [
-            'first_name' => 'required|string|max:255',
-            'last_name' => 'required|string|max:255',
-            'gender' => 'required|in:male,female,Male,Female,M,F',
-            'date_of_birth' => 'nullable|date|before:today',
-            'email' => 'nullable|email|unique:members,email',
-            'national_id_number' => 'nullable|string|unique:members,national_id_number',
-            'reference' => 'nullable|string|unique:members,reference',
-            'status' => 'nullable|in:active,inactive,Active,Inactive',
-        ];
-    }
-
-    public function customValidationMessages()
-    {
-        return [
-            '*.first_name.required' => 'First name is required in row :row.',
-            '*.last_name.required' => 'Last name is required in row :row.',
-            '*.gender.required' => 'Gender is required in row :row.',
-            '*.gender.in' => 'Gender must be Male or Female in row :row.',
-            '*.date_of_birth.date' => 'Date of birth must be a valid date in row :row.',
-            '*.date_of_birth.before' => 'Date of birth must be before today in row :row.',
-            '*.email.email' => 'Email must be a valid email address in row :row.',
-            '*.email.unique' => 'Email already exists in row :row.',
-            '*.national_id_number.unique' => 'National ID number already exists in row :row.',
-            '*.reference.unique' => 'Reference number already exists in row :row.',
-            '*.status.in' => 'Status must be Active or Inactive in row :row.',
-        ];
-    }
-
-    private function validateRow($row, $rowNumber)
-    {
-        // Define the fields that are expected to be non-empty
-        $requiredFields = ['first_name', 'last_name', 'gender'];
-
-        // Check if any of the required fields in the row are not empty
-        $notEmptyFields = collect($requiredFields)->filter(function ($field) use ($row) {
-            return !empty($row[$field]);
-        });
-
-        // If at least one required field is not empty, perform validation
-        if ($notEmptyFields->isNotEmpty()) {
-            $validator = Validator::make($row->toArray(), $this->rules(), $this->customValidationMessages());
-            if ($validator->fails()) {
-                throw new ValidationException($validator, "Validation failed in row " . ($rowNumber + 2));
-            }
-        }
-    }
-
     private function processGender($row)
     {
-        if (!isset($row['gender'])) {
+        if (!isset($row['gender']) || empty($row['gender'])) {
             return 'other';
         }
 
@@ -219,59 +261,154 @@ class MembersImport implements ToCollection, WithHeadingRow, WithValidation
         }
     }
 
-    private function createMember($row, $gender)
+    private function parsePhone($phone)
     {
-        // Prepare phone data
-        $phone = null;
-        if (!empty($row['phone_code']) && !empty($row['phone_number'])) {
-            $phone = [
-                'code' => $this->formatPhoneCode($row['phone_code']),
-                'number' => $this->formatPhoneNumber($row['phone_number'])
-            ];
+        if (empty($phone)) {
+            return null;
         }
 
+        $phone = trim((string) $phone);
+
+        // Remove all non-digit characters except plus
+        $cleaned = preg_replace('/[^\d\+]/', '', $phone);
+
+        // Default country code for Rwanda
+        $countryCode = '250';
+
+        // Handle different phone formats
+        if (Str::startsWith($cleaned, '250')) {
+            // Format: 2507XXXXXXXXX
+            $number = substr($cleaned, 3);
+            $code = '250';
+        } elseif (Str::startsWith($cleaned, '07')) {
+            // Format: 07XXXXXXXXX
+            $number = substr($cleaned, 1);
+            $code = '250';
+        } elseif (Str::startsWith($cleaned, '7')) {
+            // Format: 7XXXXXXXXX
+            $number = $cleaned;
+            $code = '250';
+        } elseif (Str::startsWith($cleaned, '+')) {
+            // Format: +2507XXXXXXXXX
+            $cleaned = ltrim($cleaned, '+');
+            if (Str::startsWith($cleaned, '250')) {
+                $number = substr($cleaned, 3);
+                $code = '250';
+            } else {
+                // Other country code
+                preg_match('/^(\d{1,3})(\d+)/', $cleaned, $matches);
+                if (count($matches) === 3) {
+                    $code = $matches[1];
+                    $number = $matches[2];
+                } else {
+                    $code = null;
+                    $number = $cleaned;
+                }
+            }
+        } else {
+            // Unknown format, use default
+            $number = $cleaned;
+            $code = '250';
+        }
+
+        // Ensure number starts with 7 for Rwanda
+        if ($code === '250' && !Str::startsWith($number, '7')) {
+            if (Str::startsWith($number, '0')) {
+                $number = substr($number, 1);
+            }
+            if (!Str::startsWith($number, '7')) {
+                $number = '7' . $number;
+            }
+        }
+
+        return [
+            'code' => '+' . $code,
+            'number' => $number
+        ];
+    }
+
+    private function parseDate($date)
+    {
+        if (empty($date)) {
+            return null;
+        }
+
+        try {
+            // Handle numeric Excel dates
+            if (is_numeric($date)) {
+                try {
+                    $date = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($date);
+                    return $date->format('Y-m-d');
+                } catch (\Exception $e) {
+                    // Not an Excel date, try other formats
+                }
+            }
+
+            // Convert to string
+            $dateStr = (string) $date;
+
+            // Try to parse as year only (e.g., 1990)
+            if (preg_match('/^\d{4}$/', $dateStr)) {
+                return $dateStr . '-01-01'; // Use January 1st of that year
+            }
+
+            // Try to parse as Carbon date
+            return Carbon::parse($dateStr)->format('Y-m-d');
+        } catch (\Exception $e) {
+            Log::warning("Failed to parse date: {$date}. Error: " . $e->getMessage());
+            return null;
+        }
+    }
+
+    private function createMember($row, $gender, $phone)
+    {
         // Prepare member data
         $memberData = [
             'reference' => $row['reference'],
             'first_name' => $row['first_name'],
             'last_name' => $row['last_name'],
             'gender' => $gender,
-            'date_of_birth' => $row['date_of_birth'] ?? null,
+            'date_of_birth' => $this->parseDate($row['date_of_birth'] ?? null),
             'email' => $row['email'] ?? null,
-            'national_id_number' => $row['national_id_number'] ?? null,
+            'national_id_number' => $this->parseNationalId($row['national_id_number'] ?? null),
             'phone' => $phone,
             'address' => $row['address'] ?? null,
-            'status' => isset($row['status']) ? strtolower($row['status']) : 'active',
             'created_by_id' => $this->user->id,
+            // 'branch_id' => $this->branch->id,
         ];
 
-        // Add company and branch if applicable
-        if ($this->company) {
-            $memberData['company_id'] = $this->company->id;
+        // Add subscription references if provided
+        if ($this->memberSubscriptionId) {
+            $memberData['member_subscription_id'] = $this->memberSubscriptionId;
         }
 
-        if ($this->branch) {
-            $memberData['branch_id'] = $this->branch->id;
+        if ($this->companySubscriptionId) {
+            $memberData['company_subscription_id'] = $this->companySubscriptionId;
+        }
+
+        // Parse membership start date for individual members
+        if (isset($row['membership_start_date'])) {
+            $startDate = $this->parseDate($row['membership_start_date']);
+            if ($startDate) {
+                $memberData['membership_start_date'] = $startDate;
+            }
         }
 
         // Create the member
         return Member::create($memberData);
     }
 
-    private function formatPhoneCode($code)
+    private function parseNationalId($nationalId)
     {
-        // Ensure phone code starts with +
-        $code = trim($code);
-        if (!Str::startsWith($code, '+')) {
-            $code = '+' . $code;
+        if (empty($nationalId)) {
+            return null;
         }
-        return $code;
-    }
 
-    private function formatPhoneNumber($number)
-    {
-        // Remove all non-digit characters
-        return preg_replace('/\D/', '', $number);
+        // Convert to string and trim
+        $nationalId = (string) $nationalId;
+        $nationalId = trim($nationalId);
+
+        return $nationalId;
     }
 
     private function generateMemberReference()
@@ -283,14 +420,17 @@ class MembersImport implements ToCollection, WithHeadingRow, WithValidation
         return $reference;
     }
 
-    private function getColumnFromError($errorMessage)
-    {
-        preg_match('/column: (\w+)/', $errorMessage, $matches);
-        return $matches[1] ?? 'unknown';
-    }
-
     public function getFailedRows()
     {
         return $this->failedRows;
+    }
+
+    public function getImportStatistics()
+    {
+        return [
+            'success_count' => $this->successCount,
+            'failed_count' => $this->failedCount,
+            'total_processed' => $this->successCount + $this->failedCount,
+        ];
     }
 }

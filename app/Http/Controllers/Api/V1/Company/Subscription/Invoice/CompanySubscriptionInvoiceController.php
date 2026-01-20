@@ -1327,7 +1327,7 @@ class CompanySubscriptionInvoiceController extends Controller
         $fileName = 'invoice_' . $data['invoice']->reference . '_' . date('Ymd_His') . '.pdf';
 
         // Render Blade template
-        $html = view('exports.company.invoice.checkins', $data)->render();
+        $html = view('exports.company.invoice.general-invoice', $data)->render();
 
         // Create mPDF instance
         $mpdf = new Mpdf([

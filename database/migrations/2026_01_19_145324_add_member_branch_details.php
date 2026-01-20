@@ -15,6 +15,7 @@ return new class extends Migration
             $table->foreignId('branch_id')->nullable()->constrained('branches')->onDelete('set null')->before('created_by_id');
         });
     }
+    
 
     /**
      * Reverse the migrations.

@@ -64,4 +64,9 @@ class CompanySubscriptionInvoice extends Model implements HasMedia {
         return $this->hasMany(\App\Models\Company\CompanySubscriptionInvoiceBankAccount::class);
     }
 
+
+    public function company_subscription_transactions(){
+        return $this->hasMany(\App\Models\Company\CompanySubscriptionTransaction::class);
+    }
+
 }

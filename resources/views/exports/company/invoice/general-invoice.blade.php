@@ -354,21 +354,21 @@
                         <span>{{ $subscription->company->address }}</span>
                     </div>
                     @endif
-                    {{-- <div class="info-row">
+                    <div class="info-row">
                         <span class="info-label">Subscription:</span>
                         <span>#{{ $subscription->id }} ({{ $subscription->billing_type->name ?? 'N/A' }})</span>
-                    </div> --}}
-                    {{-- <div class="info-row">
+                    </div>
+                    <div class="info-row">
                         <span class="info-label">Period:</span>
                         <span>{{ $invoice->from_date->format('M d, Y') }} to {{ $invoice->to_date->format('M d, Y') }}</span>
-                    </div> --}}
+                    </div>
                 </div>
             </div>
 
             <div class="info-box">
                 <h3>INVOICE DETAILS</h3>
                 <div class="info-details">
-                    <div class="info-row">
+                    {{-- <div class="info-row">
                         <span class="info-label">Invoice #:</span>
                         <span>{{ $invoice->reference }}</span>
                     </div>
@@ -390,6 +390,7 @@
                         <span>{{ $subscription->duration_type->name }}</span>
                     </div>
                     @endif
+                    --}}
                 </div>
             </div>
         </div>

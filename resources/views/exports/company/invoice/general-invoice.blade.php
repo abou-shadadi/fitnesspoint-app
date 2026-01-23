@@ -4,150 +4,137 @@
     <meta charset="UTF-8">
     <title>Invoice {{ $invoice->reference }}</title>
     <style>
-        /* Reset and base styles */
+        /* Optimized for single page */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'DejaVu Sans', Arial, sans-serif;
-            font-size: 12px;
-            line-height: 1.4;
+            font-size: 10px;
+            line-height: 1.2;
             color: #333;
             background-color: #fff;
         }
 
-        /* Container */
         .invoice-container {
             max-width: 210mm;
             margin: 0 auto;
-            padding: 20px;
+            padding: 8px;
         }
 
-        /* Header */
+        /* Header - Balanced */
         .invoice-header {
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 30px;
-            border-bottom: 2px solid #2c3e50;
-            padding-bottom: 20px;
+            width: 100%;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #2c3e50;
         }
 
-        .company-info h1 {
-            font-size: 24px;
+        .company-name {
+            font-size: 16px;
             color: #2c3e50;
-            margin-bottom: 5px;
+            margin-bottom: 2px;
         }
 
-        .company-info .tagline {
+        .company-tagline {
             color: #7f8c8d;
-            font-size: 14px;
+            font-size: 9px;
+            margin-bottom: 4px;
         }
 
-        .invoice-title {
-            text-align: right;
+        .company-details {
+            font-size: 9px;
+            margin-bottom: 2px;
         }
 
-        .invoice-title h2 {
-            font-size: 28px;
+        .invoice-title-main {
+            font-size: 18px;
             color: #e74c3c;
-            margin-bottom: 5px;
+            margin-bottom: 3px;
         }
 
-        /* Invoice info section */
-        .invoice-info-section {
+        .invoice-details {
+            font-size: 9px;
+            margin-bottom: 2px;
+        }
+
+        /* Payment Status */
+        .payment-status {
+            padding: 6px;
+            border-radius: 3px;
+            margin-bottom: 10px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 11px;
+        }
+
+        .status-paid { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .status-pending { background-color: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        .status-overdue { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .status-partially-paid { background-color: #cce5ff; color: #004085; border: 1px solid #b8daff; }
+
+        /* Combined Info Section */
+        .combined-info {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 30px;
+            margin-bottom: 12px;
+            background: #f8f9fa;
+            padding: 8px;
+            border-radius: 3px;
         }
 
-        .info-box {
+        .info-section {
             flex: 1;
-            margin: 0 10px;
+            padding: 0 8px;
         }
 
-        .info-box h3 {
-            background-color: #f8f9fa;
-            padding: 8px 12px;
-            border-left: 4px solid #3498db;
-            margin-bottom: 10px;
-            font-size: 14px;
-        }
-
-        .info-details {
-            padding: 0 12px;
+        .info-title {
+            font-weight: bold;
+            color: #2c3e50;
+            font-size: 10px;
+            margin-bottom: 4px;
+            padding-bottom: 3px;
+            border-bottom: 1px solid #ddd;
         }
 
         .info-row {
             display: flex;
-            margin-bottom: 5px;
+            margin-bottom: 3px;
         }
 
         .info-label {
             font-weight: bold;
-            min-width: 120px;
+            min-width: 70px;
             color: #555;
+            font-size: 9px;
         }
 
-        /* Billing summary */
-        .billing-summary {
-            background-color: #f8f9fa;
-            padding: 20px;
-            border-radius: 5px;
-            margin-bottom: 30px;
+        .info-value {
+            font-size: 9px;
         }
 
-        .billing-summary h3 {
-            color: #2c3e50;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #ddd;
-        }
-
-        .summary-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-        }
-
-        .summary-item {
-            background: white;
-            padding: 15px;
-            border-radius: 4px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        .summary-label {
-            font-size: 11px;
-            color: #7f8c8d;
-            text-transform: uppercase;
-            margin-bottom: 5px;
-        }
-
-        .summary-value {
-            font-size: 18px;
-            font-weight: bold;
-            color: #2c3e50;
-        }
-
-        /* Invoice items table */
+        /* Invoice Items Table */
         .invoice-items {
-            margin-bottom: 30px;
+            margin-bottom: 12px;
         }
 
         .invoice-items h3 {
             background-color: #2c3e50;
             color: white;
-            padding: 10px 15px;
+            padding: 5px 8px;
             margin-bottom: 0;
+            font-size: 11px;
         }
 
         .items-table {
             width: 100%;
             border-collapse: collapse;
+            font-size: 9px;
         }
 
         .items-table th {
             background-color: #f8f9fa;
-            padding: 12px 15px;
+            padding: 5px 6px;
             text-align: left;
             border: 1px solid #ddd;
             font-weight: bold;
@@ -155,7 +142,7 @@
         }
 
         .items-table td {
-            padding: 12px 15px;
+            padding: 5px 6px;
             border: 1px solid #ddd;
             vertical-align: top;
         }
@@ -165,17 +152,18 @@
 
         /* Amounts section */
         .amounts-section {
-            margin-bottom: 30px;
+            margin-bottom: 12px;
         }
 
         .amounts-table {
-            width: 300px;
+            width: 220px;
             margin-left: auto;
             border-collapse: collapse;
+            font-size: 10px;
         }
 
         .amounts-table td {
-            padding: 10px 15px;
+            padding: 4px 6px;
             border: 1px solid #ddd;
         }
 
@@ -188,117 +176,78 @@
             background-color: #2c3e50;
             color: white;
             font-weight: bold;
-            font-size: 16px;
-        }
-
-        /* Payment status */
-        .payment-status {
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            text-align: center;
-            font-weight: bold;
-            font-size: 16px;
-        }
-
-        .status-paid {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-
-        .status-pending {
-            background-color: #fff3cd;
-            color: #856404;
-            border: 1px solid #ffeaa7;
-        }
-
-        .status-overdue {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-
-        .status-partially-paid {
-            background-color: #cce5ff;
-            color: #004085;
-            border: 1px solid #b8daff;
-        }
-
-        /* Check-in summary for per-pass billing */
-        .checkin-summary {
-            background-color: #f0f8ff;
-            padding: 20px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }
-
-        .checkin-summary h4 {
-            color: #2c3e50;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #b8daff;
-        }
-
-        .checkin-table {
-            width: 100%;
-            border-collapse: collapse;
             font-size: 11px;
         }
 
-        .checkin-table th,
-        .checkin-table td {
-            padding: 8px;
-            border: 1px solid #b8daff;
-            text-align: center;
+        /* Payment Transactions */
+        @if($transactions->count() > 0)
+        .transactions-section {
+            margin-bottom: 12px;
         }
 
-        .checkin-table th {
-            background-color: #e3f2fd;
+        .transactions-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 9px;
+        }
+
+        .transactions-table th {
+            background-color: #f8f9fa;
+            padding: 5px 6px;
+            border: 1px solid #ddd;
             font-weight: bold;
+        }
+
+        .transactions-table td {
+            padding: 4px 6px;
+            border: 1px solid #ddd;
+        }
+        @endif
+
+        /* Check-in summary */
+        .checkin-summary {
+            background: #f0f8ff;
+            padding: 6px;
+            margin-bottom: 8px;
+            border-radius: 3px;
+            font-size: 9px;
+            border-left: 3px solid #3498db;
         }
 
         /* Footer */
         .invoice-footer {
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 2px solid #2c3e50;
-            font-size: 10px;
-            color: #7f8c8d;
+            margin-top: 15px;
+            padding-top: 8px;
+            border-top: 1px solid #2c3e50;
+            font-size: 8px;
+            color: #666;
         }
 
         .footer-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 20px;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 8px;
         }
 
         .footer-box h4 {
             color: #2c3e50;
-            margin-bottom: 10px;
-            font-size: 12px;
+            margin-bottom: 3px;
+            font-size: 9px;
         }
 
         .terms-conditions {
-            font-style: italic;
-            color: #666;
-            line-height: 1.6;
+            font-size: 8px;
+            line-height: 1.3;
+            margin-bottom: 5px;
         }
-
-        /* Utility classes */
-        .mb-10 { margin-bottom: 10px; }
-        .mb-20 { margin-bottom: 20px; }
-        .mt-20 { margin-top: 20px; }
-        .text-uppercase { text-transform: uppercase; }
-        .font-bold { font-weight: bold; }
 
         /* Status badges */
         .status-badge {
             display: inline-block;
-            padding: 3px 8px;
-            border-radius: 12px;
-            font-size: 10px;
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-size: 8px;
             font-weight: bold;
             text-transform: uppercase;
         }
@@ -306,31 +255,41 @@
         .badge-completed { background-color: #d4edda; color: #155724; }
         .badge-pending { background-color: #fff3cd; color: #856404; }
         .badge-failed { background-color: #f8d7da; color: #721c24; }
+
+        /* Column widths for tables */
+        .col-desc { width: 40%; }
+        .col-rate { width: 12%; }
+        .col-tax { width: 10%; }
+        .col-amount { width: 12%; }
+        .col-tax-amt { width: 12%; }
+        .col-subtotal { width: 14%; }
     </style>
 </head>
 <body>
     <div class="invoice-container">
         <!-- Header -->
         <div class="invoice-header">
-            <div class="company-info">
-                <h1>{{ $company->name }}</h1>
-                <p class="tagline">Professional Subscription Services</p>
-                @if($company->address)
-                    <p class="mb-10">{{ $company->address }}</p>
-                @endif
-                @if($company->phone)
-                    <p>Phone: {{ $company->phone }}</p>
-                @endif
-                @if($company->email)
-                    <p>Email: {{ $company->email }}</p>
-                @endif
+            <div>
+                <div class="company-name">{{ $company->name }}</div>
+                <div class="company-tagline">Professional Subscription Services</div>
+                <div class="company-details">
+                    @if($company->address)
+                        {{ $company->address }}<br>
+                    @endif
+                    @if($company->full_phone)
+                        Phone: {{ $company->full_phone }}<br>
+                    @endif
+                    @if($company->email)
+                        Email: {{ $company->email }}
+                    @endif
+                </div>
             </div>
 
-            <div class="invoice-title">
-                <h2>INVOICE</h2>
-                <p class="mb-10">Reference: <strong>{{ $invoice->reference }}</strong></p>
-                <p>Date: {{ $invoice->invoice_date->format('F d, Y') }}</p>
-                <p>Due Date: {{ $invoice->due_date->format('F d, Y') }}</p>
+            <div style="text-align: right;">
+                <div class="invoice-title-main">INVOICE</div>
+                <div class="invoice-details">Reference: <strong>{{ $invoice->reference }}</strong></div>
+                <div class="invoice-details">Date: {{ $invoice->invoice_date->format('M d, Y') }}</div>
+                <div class="invoice-details">Due Date: {{ $invoice->due_date->format('M d, Y') }}</div>
             </div>
         </div>
 
@@ -339,116 +298,59 @@
             INVOICE STATUS: {{ strtoupper(str_replace('_', ' ', $invoice->status)) }}
         </div>
 
-        <!-- Invoice Info Section -->
-        <div class="invoice-info-section">
-            <div class="info-box">
-                <h3>BILL TO</h3>
-                <div class="info-details">
-                    <div class="info-row">
-                        <span class="info-label">Company:</span>
-                        <span>{{ $subscription->company->name }}</span>
-                    </div>
-                    @if($subscription->company->address)
-                    <div class="info-row">
-                        <span class="info-label">Address:</span>
-                        <span>{{ $subscription->company->address }}</span>
-                    </div>
-                    @endif
-                    <div class="info-row">
-                        <span class="info-label">Subscription:</span>
-                        <span>#{{ $subscription->id }} ({{ $subscription->billing_type->name ?? 'N/A' }})</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Period:</span>
-                        <span>{{ $invoice->from_date->format('M d, Y') }} to {{ $invoice->to_date->format('M d, Y') }}</span>
-                    </div>
+        <!-- Combined Info Section -->
+        <div class="combined-info">
+            <div class="info-section">
+                <div class="info-title">BILL TO</div>
+                <div class="info-row">
+                    <span class="info-label">Company:</span>
+                    <span class="info-value">{{ $subscription->company->name }}</span>
+                </div>
+                @if($subscription->company->address)
+                <div class="info-row">
+                    <span class="info-label">Address:</span>
+                    <span class="info-value">{{ $subscription->company->address }}</span>
+                </div>
+                @endif
+                <div class="info-row">
+                    <span class="info-label">Subscription:</span>
+                    <span class="info-value">#{{ $subscription->id }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Period:</span>
+                    <span class="info-value">{{ $invoice->from_date->format('M d, Y') }} to {{ $invoice->to_date->format('M d, Y') }}</span>
                 </div>
             </div>
 
-            <div class="info-box">
-                <h3>INVOICE DETAILS</h3>
-                <div class="info-details">
-                    {{-- <div class="info-row">
-                        <span class="info-label">Invoice #:</span>
-                        <span>{{ $invoice->reference }}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Invoice Date:</span>
-                        <span>{{ $invoice->invoice_date->format('M d, Y') }}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Due Date:</span>
-                        <span>{{ $invoice->due_date->format('M d, Y') ?? null }}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Billing Type:</span>
-                        <span>{{ $subscription->billing_type->name ?? 'N/A' }}</span>
-                    </div>
-                    @if($subscription->duration_type)
-                    <div class="info-row">
-                        <span class="info-label">Duration:</span>
-                        <span>{{ $subscription->duration_type->name }}</span>
-                    </div>
-                    @endif
-                    --}}
+            <div class="info-section">
+                <div class="info-title">INVOICE DETAILS</div>
+                <div class="info-row">
+                    <span class="info-label">Billing Type:</span>
+                    <span class="info-value">{{ $subscription->billing_type->name ?? 'N/A' }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Duration:</span>
+                    <span class="info-value">{{ $subscription->duration_type->name ?? 'N/A' }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Rate Type:</span>
+                    <span class="info-value">{{ $invoice->rate_type->name ?? 'N/A' }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Tax Rate:</span>
+                    <span class="info-value">{{ $invoice->tax_rate->rate ?? 0 }}%</span>
                 </div>
             </div>
         </div>
 
-        <!-- Check-in Summary for Per-Pass Billing -->
+        <!-- Check-in Summary -->
         @if(!empty($check_in_summary) && $subscription->billing_type->key === 'per_pass')
         <div class="checkin-summary">
-            <h4>CHECK-IN SUMMARY</h4>
-            <p class="mb-10">Total Check-ins: <strong>{{ $check_in_summary['total_check_ins'] }}</strong> | Unique Members: <strong>{{ $check_in_summary['unique_members'] }}</strong></p>
-
-            @if(!empty($check_in_summary['daily_summary']))
-            <table class="checkin-table">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Total Check-ins</th>
-                        <th>Unique Members</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach($check_in_summary['daily_summary'] as $daily)
-                    <tr>
-                        <td>{{ $daily['date'] }}</td>
-                        <td>{{ $daily['total_check_ins'] }}</td>
-                        <td>{{ $daily['unique_members'] }}</td>
-                    </tr>
-                    @endforeach
-                </tbody>
-            </table>
-            @endif
+            <strong>Check-in Summary:</strong>
+            {{ $check_in_summary['total_check_ins'] }} total check-ins •
+            {{ $check_in_summary['unique_members'] }} unique members
         </div>
         @endif
-
-        <!-- Billing Summary -->
-        <div class="billing-summary">
-            <h3>BILLING SUMMARY</h3>
-            <div class="summary-grid">
-                <div class="summary-item">
-                    <div class="summary-label">Subscription Amount</div>
-                    <div class="summary-value">{{ $currency_symbol }}{{ number_format($invoice->amount, 2) }}</div>
-                </div>
-
-                <div class="summary-item">
-                    <div class="summary-label">Tax ({{ $invoice->tax_rate->name ?? 'N/A' }})</div>
-                    <div class="summary-value">{{ $currency_symbol }}{{ number_format($invoice->tax_amount, 2) }}</div>
-                </div>
-
-                <div class="summary-item">
-                    <div class="summary-label">Discount</div>
-                    <div class="summary-value">{{ $currency_symbol }}{{ number_format($invoice->discount_amount, 2) }}</div>
-                </div>
-
-                <div class="summary-item">
-                    <div class="summary-label">Total Amount</div>
-                    <div class="summary-value">{{ $currency_symbol }}{{ number_format($invoice->total_amount, 2) }}</div>
-                </div>
-            </div>
-        </div>
 
         <!-- Invoice Items Table -->
         <div class="invoice-items">
@@ -456,23 +358,25 @@
             <table class="items-table">
                 <thead>
                     <tr>
-                        <th>Description</th>
-                        <th class="text-center">Rate Type</th>
-                        <th class="text-center">Tax Rate</th>
-                        <th class="text-right">Amount</th>
-                        <th class="text-right">Tax</th>
-                        <th class="text-right">Subtotal</th>
+                        <th class="col-desc">Description</th>
+                        <th class="col-rate text-center">Rate Type</th>
+                        <th class="col-tax text-center">Tax Rate</th>
+                        <th class="col-amount text-right">Amount</th>
+                        <th class="col-tax-amt text-right">Tax</th>
+                        <th class="col-subtotal text-right">Subtotal</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
                         <td>
                             <strong>Company Subscription</strong><br>
-                            {{ $subscription->billing_type->description ?? 'Subscription service' }}<br>
-                            Period: {{ $invoice->from_date->format('M d, Y') }} to {{ $invoice->to_date->format('M d, Y') }}
-                            @if($subscription->billing_type->key === 'per_pass')
-                            <br>Total Check-ins: {{ $invoice->total_member_check_ins }}
-                            @endif
+                            <span style="font-size: 8.5px;">
+                                {{ $subscription->billing_type->description ?? 'Subscription service' }}<br>
+                                Period: {{ $invoice->from_date->format('M d, Y') }} to {{ $invoice->to_date->format('M d, Y') }}
+                                @if($subscription->billing_type->key === 'per_pass')
+                                <br>Total Check-ins: {{ $invoice->total_member_check_ins }}
+                                @endif
+                            </span>
                         </td>
                         <td class="text-center">{{ $invoice->rate_type->name ?? 'N/A' }}</td>
                         <td class="text-center">{{ $invoice->tax_rate->rate ?? 0 }}%</td>
@@ -520,17 +424,18 @@
 
         <!-- Payment Transactions -->
         @if($transactions->count() > 0)
-        <div class="invoice-items">
-            <h3>PAYMENT TRANSACTIONS</h3>
-            <table class="items-table">
+        <div class="transactions-section">
+            <div style="background-color: #2c3e50; color: white; padding: 5px 8px; font-size: 11px; font-weight: bold;">
+                PAYMENT TRANSACTIONS
+            </div>
+            <table class="transactions-table">
                 <thead>
                     <tr>
-                        <th>Reference</th>
-                        <th>Date</th>
-                        <th>Payment Method</th>
-                        <th>Branch</th>
-                        <th class="text-right">Amount Paid</th>
-                        <th>Status</th>
+                        <th style="width: 25%;">Reference</th>
+                        <th style="width: 20%;">Date</th>
+                        <th style="width: 25%;">Payment Method</th>
+                        <th style="width: 20%;" class="text-right">Amount Paid</th>
+                        <th style="width: 10%;">Status</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -539,7 +444,6 @@
                         <td>{{ $transaction->reference }}</td>
                         <td>{{ $transaction->date->format('M d, Y') }}</td>
                         <td>{{ $transaction->payment_method->name ?? 'N/A' }}</td>
-                        <td>{{ $transaction->branch->name ?? 'N/A' }}</td>
                         <td class="text-right">{{ $currency_symbol }}{{ number_format($transaction->amount_paid, 2) }}</td>
                         <td>
                             <span class="status-badge badge-{{ $transaction->status }}">
@@ -558,26 +462,29 @@
             <div class="footer-grid">
                 <div class="footer-box">
                     <h4>Payment Instructions</h4>
-                    <p>Please make payment by the due date to avoid late fees.</p>
-                    <p>Payment can be made via bank transfer or at any branch.</p>
+                    <div style="font-size: 8px;">
+                        Please make payment by the due date to avoid late fees.<br>
+                        Payment can be made via bank transfer or at any branch.
+                    </div>
                 </div>
-
                 <div class="footer-box">
                     <h4>Contact Information</h4>
-                    <p>For billing inquiries:</p>
-                    <p>Email: billing@example.com</p>
-                    <p>Phone: +255 XXX XXX XXX</p>
+                    <div style="font-size: 8px;">
+                        For billing inquiries:<br>
+                        Email: billing@example.com<br>
+                        Phone: +255 XXX XXX XXX
+                    </div>
                 </div>
             </div>
 
-            <div class="terms-conditions mt-20">
+            <div class="terms-conditions">
                 <p><strong>Terms & Conditions:</strong></p>
                 <p>1. Payment is due within {{ $invoice->due_date->diffInDays($invoice->invoice_date) }} days of invoice date.</p>
                 <p>2. Late payments may be subject to a late fee of 5% per month.</p>
-                <p>3. All amounts are in {{ $invoice->currency->code ?? 'FRW'  }}.</p>
+                <p>3. All amounts are in {{ $invoice->currency->code ?? 'FRW' }}.</p>
             </div>
 
-            <div class="text-center mt-20">
+            <div style="text-align: center; margin-top: 5px; font-size: 8px;">
                 <p>Generated on {{ $generated_at }}</p>
                 <p>This is a computer-generated invoice. No signature is required.</p>
             </div>

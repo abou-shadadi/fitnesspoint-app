@@ -13,6 +13,8 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Response;
 use Mpdf\Mpdf;
 use Illuminate\Support\Facades\Storage;
+use finfo; // Add this line
+use Illuminate\Support\Facades\Log;
 
 class CompanySubscriptionInvoiceCheckInController extends Controller
 {
@@ -198,8 +200,8 @@ class CompanySubscriptionInvoiceCheckInController extends Controller
 
             // Base query for check-ins within invoice date range
             $query = CompanySubscriptionMemberCheckIn::whereHas('company_subscription_member', function ($q) use ($subscriptionId) {
-                    $q->where('company_subscription_id', $subscriptionId);
-                })
+                $q->where('company_subscription_id', $subscriptionId);
+            })
                 ->whereBetween('datetime', [$fromDate, $toDate])
                 ->with([
                     'company_subscription_member.member',
@@ -256,9 +258,9 @@ class CompanySubscriptionInvoiceCheckInController extends Controller
 
             if ($sortField === 'company_subscription_member.member.name') {
                 $query->join('company_subscription_members', 'company_subscription_member_check_ins.company_subscription_member_id', '=', 'company_subscription_members.id')
-                      ->join('members', 'company_subscription_members.member_id', '=', 'members.id')
-                      ->orderBy('members.name', $sortOrder)
-                      ->select('company_subscription_member_check_ins.*');
+                    ->join('members', 'company_subscription_members.member_id', '=', 'members.id')
+                    ->orderBy('members.name', $sortOrder)
+                    ->select('company_subscription_member_check_ins.*');
             } else {
                 $query->orderBy($sortField, $sortOrder);
             }
@@ -375,7 +377,7 @@ class CompanySubscriptionInvoiceCheckInController extends Controller
      *                 @OA\Property(property="status", type="string"),
      *                 @OA\Property(property="branch_id", type="integer"),
      *                 @OA\Property(property="branch_name", type="string"),
-                *                 @OA\Property(property="notes", type="string"),
+     *                 @OA\Property(property="notes", type="string"),
      *                 @OA\Property(property="created_by_id", type="integer"),
      *                 @OA\Property(property="created_by_name", type="string"),
      *                 @OA\Property(property="signature_url", type="string", nullable=true)
@@ -429,8 +431,8 @@ class CompanySubscriptionInvoiceCheckInController extends Controller
 
             // Get the check-in
             $checkIn = CompanySubscriptionMemberCheckIn::whereHas('company_subscription_member', function ($q) use ($subscriptionId) {
-                    $q->where('company_subscription_id', $subscriptionId);
-                })
+                $q->where('company_subscription_id', $subscriptionId);
+            })
                 ->whereBetween('datetime', [$fromDate, $toDate])
                 ->with([
                     'company_subscription_member.member',
@@ -480,9 +482,9 @@ class CompanySubscriptionInvoiceCheckInController extends Controller
         }
     }
 
-   /**
+    /**
      * @OA\Get(
-     *     path="/api/companies/{companyId}/subscriptions/{subscriptionId}/invoices/{invoiceId}/export",
+     *     path="/api/companies/{companyId}/subscriptions/{subscriptionId}/invoices/{invoiceId}/check-ins/export",
      *     summary="Export check-ins to PDF",
      *     tags={"Companies | Subscriptions | Invoices | Check-ins"},
      *     security={{"sanctum":{}}},
@@ -599,8 +601,8 @@ class CompanySubscriptionInvoiceCheckInController extends Controller
 
             // Get all check-ins with filters (same as index method)
             $query = CompanySubscriptionMemberCheckIn::whereHas('company_subscription_member', function ($q) use ($subscriptionId) {
-                    $q->where('company_subscription_id', $subscriptionId);
-                })
+                $q->where('company_subscription_id', $subscriptionId);
+            })
                 ->whereBetween('datetime', [$fromDate, $toDate])
                 ->with([
                     'company_subscription_member.member',
@@ -611,7 +613,7 @@ class CompanySubscriptionInvoiceCheckInController extends Controller
 
             // Apply filters
             if ($request->has('date_from') && $request->date_from) {
-                $query->whereDate('datetime', '>=', $request->date_from);
+                //      $query->whereDate('datetime', '>=', $request->date_from);
             }
 
             if ($request->has('date_to') && $request->date_to) {
@@ -635,28 +637,84 @@ class CompanySubscriptionInvoiceCheckInController extends Controller
             $query->orderBy('datetime', 'desc');
             $checkIns = $query->get();
 
-            // Transform data for export with signature information
             $exportData = $checkIns->map(function ($checkIn) {
+                // Get signature as base64 for PDF
+                $signatureBase64 = null;
+                if (!empty($checkIn->signature)) {
+                    try {
+                        $signaturePath = $checkIn->signature;
+
+                        // Method 1: Check if it's in storage
+                        if (Storage::exists($signaturePath)) {
+                            $mimeType = Storage::mimeType($signaturePath);
+                            $imageData = base64_encode(Storage::get($signaturePath));
+                            $signatureBase64 = 'data:' . $mimeType . ';base64,' . $imageData;
+                        }
+                        // Method 2: Check if it's a full URL
+                        elseif (filter_var($signaturePath, FILTER_VALIDATE_URL)) {
+                            // Use Guzzle or CURL instead of file_get_contents for better reliability
+                            $client = new \GuzzleHttp\Client([
+                                'timeout' => 5,
+                                'verify' => false, // Disable SSL verification for local/dev
+                            ]);
+
+                            try {
+                                $response = $client->get($signaturePath);
+                                if ($response->getStatusCode() === 200) {
+                                    $imageData = $response->getBody()->getContents();
+                                    // Try to detect mime type from content
+                                    $mimeType = $this->detectMimeTypeFromContent($imageData);
+                                    $signatureBase64 = 'data:' . $mimeType . ';base64,' . base64_encode($imageData);
+                                }
+                            } catch (\Exception $e) {
+                                // Log and continue
+                                Log::warning('Failed to download signature from URL: ' . $e->getMessage());
+                            }
+                        }
+                        // Method 3: Check if it's a local public file
+                        elseif (file_exists(public_path($signaturePath))) {
+                            $filePath = public_path($signaturePath);
+                            $imageData = file_get_contents($filePath);
+                            $mimeType = mime_content_type($filePath);
+                            $signatureBase64 = 'data:' . $mimeType . ';base64,' . base64_encode($imageData);
+                        }
+                    } catch (\Exception $e) {
+                        //Log::warning('Failed to load signature for check-in ' . $checkIn->id . ': ' . $e->getMessage());
+                        $signatureBase64 = null;
+                    }
+                }
+
+                $member = $checkIn->company_subscription_member->member ?? null;
+
+                $memberFullName = collect([
+                    $member->first_name ?? null,
+                    $member->last_name ?? null,
+                ])->filter()->implode(' ');
+
                 return [
                     'date' => Carbon::parse($checkIn->datetime)->format('Y-m-d'),
                     'time' => Carbon::parse($checkIn->datetime)->format('H:i:s'),
-                    'member_name' => $checkIn->company_subscription_member->member->name ?? 'N/A',
+                    'member_name' => $memberFullName ?: 'N/A',
                     'check_in_method' => $checkIn->check_in_method->name ?? 'N/A',
                     'status' => $checkIn->status,
                     'branch' => $checkIn->branch->name ?? 'N/A',
-                    'notes' => $checkIn->notes,
+                    'notes' => $checkIn->notes ?? '',
                     'created_by' => $checkIn->created_by->name ?? 'N/A',
                     'has_signature' => !empty($checkIn->signature),
+                    'signature_base64' => $signatureBase64,
                     'signature_path' => $checkIn->signature,
                 ];
             })->toArray();
+
+            // return response()->json([
+            //     'data' => $exportData
+            // ]);
 
             // Calculate summary
             $summary = $this->calculateSummary($checkIns, $fromDate, $toDate);
 
             // Generate PDF using mPDF and Blade template
             return $this->generatePdf($exportData, $summary, $company, $subscription, $invoice);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -667,14 +725,15 @@ class CompanySubscriptionInvoiceCheckInController extends Controller
     }
 
     /**
-     * Calculate summary statistics
+     * Calculate summary statistics - UPDATED for per-pass billing (only completed check-ins)
      */
     private function calculateSummary($checkIns, Carbon $fromDate, Carbon $toDate): array
     {
-        // Group check-ins by date
+        // For per-pass billing: Count unique members per day (only completed check-ins)
         $dailyData = [];
         $uniqueMembers = [];
         $memberDates = [];
+        $totalCheckInsCount = 0;
 
         foreach ($checkIns as $checkIn) {
             $date = Carbon::parse($checkIn->datetime)->format('Y-m-d');
@@ -685,6 +744,7 @@ class CompanySubscriptionInvoiceCheckInController extends Controller
                 $dailyData[$date] = [
                     'date' => $date,
                     'total_check_ins' => 0,
+                    'unique_member_check_ins' => 0, // Unique members per day (for billing)
                     'completed' => 0,
                     'failed' => 0,
                     'pending' => 0,
@@ -693,19 +753,25 @@ class CompanySubscriptionInvoiceCheckInController extends Controller
                 ];
             }
 
-            // Count by status
+            // Count total check-ins (for reporting purposes)
             $dailyData[$date]['total_check_ins']++;
+            $totalCheckInsCount++;
+
+            // Count by status
             $dailyData[$date][$checkIn->status]++;
 
-            // Track unique members per day
+            // Track unique members per day (ONLY FOR COMPLETED CHECK-INS)
             $memberKey = $date . '_' . $memberId;
-            if (!isset($memberDates[$memberKey])) {
+
+            // Only count for billing if check-in is completed
+            if ($checkIn->status === 'completed' && !isset($memberDates[$memberKey])) {
                 $memberDates[$memberKey] = true;
                 $dailyData[$date]['members'][$memberId] = true;
                 $dailyData[$date]['unique_members'] = count($dailyData[$date]['members']);
+                $dailyData[$date]['unique_member_check_ins']++; // Increment unique member count for this day
             }
 
-            // Track overall unique members
+            // Track overall unique members (all statuses for reporting)
             if (!in_array($memberId, $uniqueMembers)) {
                 $uniqueMembers[] = $memberId;
             }
@@ -720,16 +786,20 @@ class CompanySubscriptionInvoiceCheckInController extends Controller
         $totalFailed = $checkIns->where('status', 'failed')->count();
         $totalPending = $checkIns->where('status', 'pending')->count();
 
+        // Calculate unique member check-ins across all days (only completed for billing)
+        $totalUniqueMemberCheckIns = count($memberDates);
+
         // Calculate total days in range
         $totalDays = $fromDate->diffInDays($toDate) + 1;
 
         return [
             'total_days' => $totalDays,
-            'total_check_ins' => $checkIns->count(),
+            'total_check_ins' => $totalCheckInsCount, // Total check-ins (including all statuses)
+            'unique_member_check_ins' => $totalUniqueMemberCheckIns, // Unique members per day (only completed)
             'total_completed' => $totalCompleted,
             'total_failed' => $totalFailed,
             'total_pending' => $totalPending,
-            'unique_members' => count($uniqueMembers),
+            'unique_members' => count($uniqueMembers), // Overall unique members (all statuses)
             'daily_summary' => $dailySummary,
         ];
     }
@@ -763,6 +833,7 @@ class CompanySubscriptionInvoiceCheckInController extends Controller
             'margin_bottom' => 15,
             'margin_header' => 5,
             'margin_footer' => 5,
+            'enable_remote' => true
         ]);
 
         // Set document information

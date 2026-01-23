@@ -174,7 +174,13 @@ class CompanySubscriptionInvoiceController extends Controller
 
             // Filter by status
             if ($request->has('status') && in_array($request->status, [
-                'pending', 'paid', 'overdue', 'cancelled', 'refunded', 'rejected', 'partially_paid'
+                'pending',
+                'paid',
+                'overdue',
+                'cancelled',
+                'refunded',
+                'rejected',
+                'partially_paid'
             ])) {
                 $query->where('status', $request->status);
             }
@@ -1034,104 +1040,108 @@ class CompanySubscriptionInvoiceController extends Controller
      * )
      */
     public function export(Request $request, $companyId, $subscriptionId, $id)
-{
-    try {
-        // Verify company exists
-        $company = Company::find($companyId);
-        if (!$company) {
+    {
+        try {
+            // Verify company exists
+            $company = Company::find($companyId);
+            if (!$company) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Company not found',
+                    'data' => null
+                ], 404);
+            }
+
+            // Verify subscription exists and belongs to company
+            $subscription = CompanySubscription::where('company_id', $companyId)->find($subscriptionId);
+            if (!$subscription) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Company subscription not found',
+                    'data' => null
+                ], 404);
+            }
+
+            // Get invoice with all relationships
+            $invoice = CompanySubscriptionInvoice::where('company_subscription_id', $subscriptionId)
+                ->with([
+                    'rate_type',
+                    'tax_rate',
+                    'company_subscription.currency',
+                    'company_subscription.billing_type',
+                    'company_subscription.duration_type',
+                    'company_subscription.company',
+                    'company_subscription_invoice_recipients.company_administrator',
+                    'company_subscription_invoice_bank_accounts.bank_account.bank',
+                    'company_subscription_invoice_bank_accounts.bank_account.currency'
+                ])
+                ->find($id);
+
+            if (!$invoice) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invoice not found',
+                    'data' => null
+                ], 404);
+            }
+
+            // Load related transactions for payment summary
+            $transactions = $invoice->company_subscription_transactions()
+                ->where('status', 'completed')
+                ->with(['payment_method', 'branch'])
+                ->get();
+
+            // Calculate payment summary
+            $totalPaid = $transactions->sum('amount_paid');
+            $balanceDue = max(0, $invoice->total_amount - $totalPaid);
+
+            // Get check-in summary for per-pass billing
+            $checkInSummary = [];
+            if ($subscription->billing_type && $subscription->billing_type->key === 'per_pass') {
+                $checkInSummary = $this->getCheckInSummary($subscriptionId, $invoice->from_date, $invoice->to_date);
+            }
+
+            // Get currency symbol
+            $currencySymbol = $this->getCurrencySymbol($subscription->currency ?? $invoice->company_subscription->currency ?? null);
+
+            if (is_array($currencySymbol)) {
+                $currencySymbol = json_encode($currencySymbol); // Convert array to string for debugging
+            }
+            // Prepare data for PDF
+            $pdfData = [
+                'invoice' => $invoice,
+                'company' => $company,
+                'subscription' => $subscription,
+                'transactions' => $transactions,
+                'total_paid' => $totalPaid,
+                'balance_due' => $balanceDue,
+                'check_in_summary' => $checkInSummary,
+                'generated_at' => now()->format('Y-m-d H:i:s'),
+                'currency_symbol' => $currencySymbol,
+                'is_paid' => $invoice->status === 'paid',
+                'is_partially_paid' => $invoice->status === 'partially_paid',
+                'is_overdue' => $invoice->status === 'overdue',
+            ];
+
+            $format = $request->input('format', 'pdf');
+
+           // return response()->json(['data' => $pdfData], 200);
+
+            if ($format === 'print') {
+                // Return HTML for print preview
+                return view('exports.company.invoice.general-invoice', $pdfData);
+            }
+
+            // Generate PDF
+            return $this->generateInvoicePdf($pdfData);
+        } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Company not found',
+                'message' => $e->getMessage(),
                 'data' => null
-            ], 404);
+            ], 500);
         }
-
-        // Verify subscription exists and belongs to company
-        $subscription = CompanySubscription::where('company_id', $companyId)->find($subscriptionId);
-        if (!$subscription) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Company subscription not found',
-                'data' => null
-            ], 404);
-        }
-
-        // Get invoice with all relationships
-        $invoice = CompanySubscriptionInvoice::where('company_subscription_id', $subscriptionId)
-            ->with([
-                'rate_type',
-                'tax_rate',
-                'company_subscription.currency',
-                'company_subscription.billing_type',
-                'company_subscription.duration_type',
-                'company_subscription.company',
-                'company_subscription_invoice_recipients.company_administrator',
-                'company_subscription_invoice_bank_accounts.bank_account.bank',
-                'company_subscription_invoice_bank_accounts.bank_account.currency'
-            ])
-            ->find($id);
-
-        if (!$invoice) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Invoice not found',
-                'data' => null
-            ], 404);
-        }
-
-        // Load related transactions for payment summary
-        $transactions = $invoice->company_subscription_transactions()
-            ->where('status', 'completed')
-            ->with(['payment_method', 'branch'])
-            ->get();
-
-        // Calculate payment summary
-        $totalPaid = $transactions->sum('amount_paid');
-        $balanceDue = max(0, $invoice->total_amount - $totalPaid);
-
-        // Get check-in summary for per-pass billing
-        $checkInSummary = [];
-        if ($subscription->billing_type && $subscription->billing_type->key === 'per_pass') {
-            $checkInSummary = $this->getCheckInSummary($subscriptionId, $invoice->from_date, $invoice->to_date);
-        }
-
-        // Get currency symbol
-        $currencySymbol = $this->getCurrencySymbol($subscription->currency ?? $invoice->company_subscription->currency ?? null);
-
-        // Prepare data for PDF
-        $pdfData = [
-            'invoice' => $invoice,
-            'company' => $company,
-            'subscription' => $subscription,
-            'transactions' => $transactions,
-            'total_paid' => $totalPaid,
-            'balance_due' => $balanceDue,
-            'check_in_summary' => $checkInSummary,
-            'generated_at' => now()->format('Y-m-d H:i:s'),
-            'currency_symbol' => $currencySymbol, // Add this
-            'is_paid' => $invoice->status === 'paid',
-            'is_partially_paid' => $invoice->status === 'partially_paid',
-            'is_overdue' => $invoice->status === 'overdue',
-        ];
-
-        $format = $request->input('format', 'pdf');
-
-        if ($format === 'print') {
-            // Return HTML for print preview
-            return view('exports.company.invoice.general-invoice', $pdfData);
-        }
-
-        // Generate PDF
-        return $this->generateInvoicePdf($pdfData);
-
-    } catch (\Exception $e) {
-        return response()->json([
-            'success' => false,
-            'message' => $e->getMessage(),
-            'data' => null
-        ], 500);
     }
-}
 
     /**
      * Generate a unique invoice reference
@@ -1166,8 +1176,8 @@ class CompanySubscriptionInvoiceController extends Controller
     {
         // Get unique members who checked in per day within the date range
         $checkIns = CompanySubscriptionMemberCheckIn::whereHas('company_subscription_member', function ($query) use ($subscriptionId) {
-                $query->where('company_subscription_id', $subscriptionId);
-            })
+            $query->where('company_subscription_id', $subscriptionId);
+        })
             ->where('status', 'completed')
             ->whereBetween('datetime', [$fromDate, $toDate])
             ->get();
@@ -1225,8 +1235,8 @@ class CompanySubscriptionInvoiceController extends Controller
     private function getCheckInSummary($subscriptionId, $fromDate, $toDate)
     {
         $checkIns = CompanySubscriptionMemberCheckIn::whereHas('company_subscription_member', function ($query) use ($subscriptionId) {
-                $query->where('company_subscription_id', $subscriptionId);
-            })
+            $query->where('company_subscription_id', $subscriptionId);
+        })
             ->where('status', 'completed')
             ->whereBetween('datetime', [$fromDate, $toDate])
             ->with(['company_subscription_member.member', 'check_in_method', 'branch'])
@@ -1377,9 +1387,31 @@ class CompanySubscriptionInvoiceController extends Controller
     private function getCurrencySymbol($currency)
     {
         if (!$currency) {
-            return 'FRW'; // Default to FRW (Rwandan Franc)
+            return 'FRW';
         }
 
+        // Handle if it's already a string
+        if (is_string($currency)) {
+            return $this->mapCurrencyCodeToSymbol($currency);
+        }
+
+        // Handle if it's an array
+        if (is_array($currency)) {
+            $code = $currency['code'] ?? $currency['symbol'] ?? null;
+            return $code ? $this->mapCurrencyCodeToSymbol($code) : 'FRW';
+        }
+
+        // Handle if it's an object
+        if (is_object($currency)) {
+            $code = $currency->code ?? $currency->symbol ?? null;
+            return $code ? $this->mapCurrencyCodeToSymbol($code) : 'FRW';
+        }
+
+        return 'FRW';
+    }
+
+    private function mapCurrencyCodeToSymbol($code)
+    {
         $symbols = [
             'USD' => '$',
             'EUR' => '€',
@@ -1391,6 +1423,9 @@ class CompanySubscriptionInvoiceController extends Controller
             'FRW' => 'FRW',
         ];
 
-        return $symbols[$currency->code] ?? $currency->code;
+        // Clean the code (remove whitespace, convert to uppercase)
+        $cleanCode = strtoupper(trim($code));
+
+        return $symbols[$cleanCode] ?? $cleanCode;
     }
 }

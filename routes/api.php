@@ -275,11 +275,11 @@ Route::middleware('auth:sanctum')->group(function () {
                             Route::put('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CompanySubscriptionInvoiceController@update');
                             Route::delete('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CompanySubscriptionInvoiceController@destroy');
 
-                            // export
-                            Route::get('/export', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CompanySubscriptionInvoiceController@export');
-
                             // check-ins
                             Route::prefix('check-ins')->group(function () {
+                                // export
+                                Route::get('/export', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CheckIn\CompanySubscriptionInvoiceCheckInController@export');
+
                                 Route::get('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CheckIn\CompanySubscriptionInvoiceCheckInController@index');
                                 Route::post('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CheckIn\CompanySubscriptionInvoiceCheckInController@store');
                                 Route::group(['prefix' => '{companySubscInvCInId}'], function () {
@@ -716,7 +716,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Bulk status update
         Route::put('/bulk-status', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@bulkUpdateStatus');
-        
+
         Route::group(['prefix' => '{memberImportId}'], function () {
             Route::get('/', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@show');
             Route::put('/', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@update');

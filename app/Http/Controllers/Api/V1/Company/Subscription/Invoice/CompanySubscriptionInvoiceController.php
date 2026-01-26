@@ -1121,10 +1121,6 @@ class CompanySubscriptionInvoiceController extends Controller
 
             // return response()->json(['data' => $pdfData], 200);
 
-            if ($format === 'print') {
-                // Return HTML for print preview
-                return view('exports.company.invoice.general-invoice', $pdfData);
-            }
 
             // Generate PDF
             return $this->generateInvoicePdf($pdfData);

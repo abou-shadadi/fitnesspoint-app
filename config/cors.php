@@ -23,11 +23,11 @@ return [
 
 	'allowed_origins_patterns' => [],
 
-    'exposed_headers' => [
-        'Content-Disposition',
-        'Content-Type',
-        'Content-Length',
-    ],
+	'allowed_headers' => ['*'],
+
+	'exposed_headers' => [],
+
+	'max_age' => 0,
 
 	'supports_credentials' => false,
 

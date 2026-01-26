@@ -1032,31 +1032,25 @@ class CompanySubscriptionInvoiceController extends Controller
      *     @OA\Response(response=500, description="Internal server error")
      * )
      */
-    public function export($companyId, $companySubscriptionId, $companySubInvId) {
+    public function export($companyId, $companySubscriptionId, $companySubInvId)
+    {
         try {
             $subscriptionId = $companySubscriptionId;
             $id = $companySubInvId;
-            // Verify company exists
+
+            // Verify company
             $company = Company::find($companyId);
             if (!$company) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Company not found',
-                    'data' => null
-                ], 404);
+                return $this->errorResponse('Company not found', 404);
             }
 
-            // Verify subscription exists and belongs to company
+            // Verify subscription belongs to company
             $subscription = CompanySubscription::where('company_id', $companyId)->find($subscriptionId);
             if (!$subscription) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Company subscription not found',
-                    'data' => null
-                ], 404);
+                return $this->errorResponse('Company subscription not found', 404);
             }
 
-            // Get invoice with all relationships
+            // Get invoice with necessary relationships
             $invoice = CompanySubscriptionInvoice::where('company_subscription_id', $subscriptionId)
                 ->with([
                     'rate_type',
@@ -1072,64 +1066,52 @@ class CompanySubscriptionInvoiceController extends Controller
                 ->find($id);
 
             if (!$invoice) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Invoice not found',
-                    'data' => null
-                ], 404);
+                return $this->errorResponse('Invoice not found', 404);
             }
 
-            // Load related transactions for payment summary
+            // Load completed transactions for payment summary
             $transactions = $invoice->company_subscription_transactions()
                 ->where('status', 'completed')
                 ->with(['payment_method', 'branch'])
                 ->get();
 
-            // Calculate payment summary
             $totalPaid = $transactions->sum('amount_paid');
             $balanceDue = max(0, $invoice->total_amount - $totalPaid);
 
-            // Get check-in summary for per-pass billing
+            // Check-in summary (only relevant for per-pass billing)
             $checkInSummary = [];
-            if ($subscription->billing_type && $subscription->billing_type->key === 'per_pass') {
+            if ($subscription->billing_type?->key === 'per_pass') {
                 $checkInSummary = $this->getCheckInSummary($subscriptionId, $invoice->from_date, $invoice->to_date);
             }
 
-            // Get currency symbol
             $currencySymbol = $this->getCurrencySymbol($subscription->currency ?? $invoice->company_subscription->currency ?? null);
 
-            if (is_array($currencySymbol)) {
-                $currencySymbol = json_encode($currencySymbol); // Convert array to string for debugging
-            }
-            // Prepare data for PDF
             $pdfData = [
-                'invoice' => $invoice,
-                'company' => $company,
-                'subscription' => $subscription,
-                'transactions' => $transactions,
-                'total_paid' => $totalPaid,
-                'balance_due' => $balanceDue,
-                'check_in_summary' => $checkInSummary,
-                'generated_at' => now()->format('Y-m-d H:i:s'),
-                'currency_symbol' => $currencySymbol,
-                'is_paid' => $invoice->status === 'paid',
+                'invoice'           => $invoice,
+                'company'           => $company,
+                'subscription'      => $subscription,
+                'transactions'      => $transactions,
+                'total_paid'        => $totalPaid,
+                'balance_due'       => $balanceDue,
+                'check_in_summary'  => $checkInSummary,
+                'generated_at'      => now()->format('Y-m-d H:i:s'),
+                'currency_symbol'   => $currencySymbol,
+                'is_paid'           => $invoice->status === 'paid',
                 'is_partially_paid' => $invoice->status === 'partially_paid',
-                'is_overdue' => $invoice->status === 'overdue',
+                'is_overdue'        => $invoice->status === 'overdue',
             ];
 
-            //$format = $request->input('format', 'pdf');
-
-            // return response()->json(['data' => $pdfData], 200);
-
-
-            // Generate PDF
+            // Generate and return PDF with explicit CORS headers
             return $this->generateInvoicePdf($pdfData);
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-                'data' => null
-            ], 500);
+            //    Log::error('Invoice export failed: ' . $e->getMessage(), [
+            //         'company_id' => $companyId,
+            //         'subscription_id' => $companySubscriptionId,
+            //         'invoice_id' => $companySubInvId,
+            //         'trace' => $e->getTraceAsString()
+            //     ]);
+
+            return $this->errorResponse($e->getMessage() ?: 'Failed to generate export', 500);
         }
     }
 
@@ -1326,49 +1308,60 @@ class CompanySubscriptionInvoiceController extends Controller
     /**
      * Generate PDF using mPDF
      */
-    private function generateInvoicePdf($data)
+    /**
+     * Generate PDF and return as downloadable response with CORS headers
+     */
+    private function generateInvoicePdf(array $data)
     {
-        $fileName = 'invoice_' . $data['invoice']->reference . '_' . date('Ymd_His') . '.pdf';
+        $invoice = $data['invoice'];
+        $fileName = 'invoice_' . $invoice->reference . '_' . now()->format('Ymd_His') . '.pdf';
 
-        // Render Blade template
+        // Render Blade view
         $html = view('exports.company.invoice.general-invoice', $data)->render();
 
-        // Create mPDF instance
+        // mPDF configuration
         $mpdf = new Mpdf([
-            'mode' => 'utf-8',
-            'format' => 'A4',
+            'mode'              => 'utf-8',
+            'format'            => 'A4',
             'default_font_size' => 10,
-            'default_font' => 'dejavusans', // Supports UTF-8
-            'margin_left' => 15,
-            'margin_right' => 15,
-            'margin_top' => 20,
-            'margin_bottom' => 20,
-            'margin_header' => 5,
-            'margin_footer' => 5,
+            'default_font'      => 'dejavusans',
+            'margin_left'       => 15,
+            'margin_right'      => 15,
+            'margin_top'        => 20,
+            'margin_bottom'     => 20,
+            'margin_header'     => 5,
+            'margin_footer'     => 5,
         ]);
 
-        // Set document information
-        $mpdf->SetTitle('Invoice ' . $data['invoice']->reference);
+        $mpdf->SetTitle('Invoice ' . $invoice->reference);
         $mpdf->SetAuthor($data['company']->name);
-        $mpdf->SetCreator('Company Subscription System');
+        $mpdf->SetCreator('Fitness Point System');
 
-        // Add header
+        // Header & Footer
         $mpdf->SetHTMLHeader('
         <div style="text-align: center; border-bottom: 1px solid #ddd; padding-bottom: 5px; margin-bottom: 10px;">
-            <span style="font-size: 10px; color: #666;">Invoice ' . $data['invoice']->reference . ' - ' . $data['company']->name . '</span>
+            <span style="font-size: 10px; color: #666;">Invoice ' . $invoice->reference . ' - ' . $data['company']->name . '</span>
         </div>');
 
-        // Add footer with page numbers
         $mpdf->SetHTMLFooter('
         <div style="text-align: center; font-size: 8px; color: #666; border-top: 1px solid #ddd; padding-top: 5px;">
             Page {PAGENO} of {nbpg} | Generated on ' . $data['generated_at'] . '
         </div>');
 
-        // Write HTML content
         $mpdf->WriteHTML($html);
 
-        // Output PDF for download
-        return $mpdf->Output($fileName, 'D');
+        // Get PDF as string
+        $pdfContent = $mpdf->Output('', 'S');
+
+        // Return Laravel response with explicit CORS headers
+        return response($pdfContent, 200)
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'attachment; filename="' . $fileName . '"')
+            // CORS headers – adjust origin in production
+            ->header('Access-Control-Allow-Origin', '*')           // ← critical
+            ->header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+            ->header('Access-Control-Allow-Headers', 'Authorization, Content-Type, Accept, X-Requested-With')
+            ->header('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type');
     }
 
     /**
@@ -1418,4 +1411,6 @@ class CompanySubscriptionInvoiceController extends Controller
 
         return $symbols[$cleanCode] ?? $cleanCode;
     }
+
+   
 }

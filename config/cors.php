@@ -1,11 +1,20 @@
 <?php
 
 return [
-    'paths' => ['api/*'],
-    'allowed_methods' => ['*'],
-    'allowed_origins' => ['http://localhost:3000'], // Your frontend
-    'allowed_headers' => ['*'],
-    'exposed_headers' => ['Content-Disposition'], // Needed for file downloads
+
+    'paths' => ['api/*', 'sanctum/csrf-cookie'],
+
+    'allowed_methods' => ['*'], // allow all HTTP methods
+
+    'allowed_origins' => ['*'], // allow all domains (change in production!)
+
+    'allowed_origins_patterns' => [],
+
+    'allowed_headers' => ['*'], // allow all headers
+
+    'exposed_headers' => [],
+
     'max_age' => 0,
-    'supports_credentials' => true, // If you send cookies or auth headers
+
+    'supports_credentials' => false, // set to true if using cookies/auth
 ];

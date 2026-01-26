@@ -1,18 +1,21 @@
 <?php
-
 return [
 
-    'paths' => ['api/*', 'sanctum/csrf-cookie', 'storage/*'],
+    'paths' => ['api/*', 'storage/*'], // Include the /storage path
 
     'allowed_methods' => ['*'],
 
     'allowed_origins' => [
         'http://localhost:3000',
-        'http://127.0.0.1:3000',
-        'https://dash.fitnesspoint.rw',
+        'http://localhost:3001',
+        'http://localhost:3002',
+        'https://api.fitnesspoint.rw'
     ],
 
-    'allowed_origins_patterns' => [],
+    'allowed_origins_patterns' => [
+        '/^https:\/\/aapi\.fitnesspoint\.rw$/',
+        '/^https:\/\/fitnesspoint\.rw$/',
+    ],
 
     'allowed_headers' => ['*'],
 
@@ -20,6 +23,6 @@ return [
 
     'max_age' => 0,
 
-    'supports_credentials' => false,
+    'supports_credentials' => true,
 
 ];

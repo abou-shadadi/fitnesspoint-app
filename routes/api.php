@@ -270,10 +270,14 @@ Route::middleware('auth:sanctum')->group(function () {
 
                         Route::get('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CompanySubscriptionInvoiceController@index');
                         Route::post('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CompanySubscriptionInvoiceController@store');
+                        
                         Route::group(['prefix' => '{companySubInvId}'], function () {
                             Route::get('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CompanySubscriptionInvoiceController@show');
                             Route::put('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CompanySubscriptionInvoiceController@update');
                             Route::delete('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CompanySubscriptionInvoiceController@destroy');
+
+                            // export
+                            Route::get('/export', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CompanySubscriptionInvoiceController@export');
 
                             // check-ins
                             Route::prefix('check-ins')->group(function () {

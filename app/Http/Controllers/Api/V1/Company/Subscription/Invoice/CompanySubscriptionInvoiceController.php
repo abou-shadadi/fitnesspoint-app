@@ -1020,13 +1020,6 @@ class CompanySubscriptionInvoiceController extends Controller
      *         required=true,
      *         @OA\Schema(type="integer")
      *     ),
-     *     @OA\Parameter(
-     *         name="format",
-     *         in="query",
-     *         required=false,
-     *         description="Export format",
-     *         @OA\Schema(type="string", enum={"pdf", "print"}, default="pdf")
-     *     ),
      *     @OA\Response(
      *         response=200,
      *         description="PDF file download",
@@ -1039,9 +1032,10 @@ class CompanySubscriptionInvoiceController extends Controller
      *     @OA\Response(response=500, description="Internal server error")
      * )
      */
-    public function export(Request $request, $companyId, $subscriptionId, $id)
-    {
+    public function export($companyId, $companySubscriptionId, $companySubInvId) {
         try {
+            $subscriptionId = $companySubscriptionId;
+            $id = $companySubInvId;
             // Verify company exists
             $company = Company::find($companyId);
             if (!$company) {
@@ -1123,9 +1117,9 @@ class CompanySubscriptionInvoiceController extends Controller
                 'is_overdue' => $invoice->status === 'overdue',
             ];
 
-            $format = $request->input('format', 'pdf');
+            //$format = $request->input('format', 'pdf');
 
-           // return response()->json(['data' => $pdfData], 200);
+            // return response()->json(['data' => $pdfData], 200);
 
             if ($format === 'print') {
                 // Return HTML for print preview

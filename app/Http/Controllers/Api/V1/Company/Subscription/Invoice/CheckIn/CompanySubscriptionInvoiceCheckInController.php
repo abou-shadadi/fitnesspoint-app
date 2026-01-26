@@ -559,47 +559,32 @@ class CompanySubscriptionInvoiceCheckInController extends Controller
     public function export(Request $request, $companyId, $subscriptionId, $invoiceId)
     {
         try {
-            // Verify company exists
+            // Verify company
             $company = Company::find($companyId);
             if (!$company) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Company not found',
-                    'data' => null
-                ], 404);
+                return response()->json(['success' => false, 'message' => 'Company not found', 'data' => null], 404);
             }
 
-            // Verify subscription exists and belongs to company
+            // Verify subscription + load relations
             $subscription = CompanySubscription::where('company_id', $companyId)
                 ->with(['company', 'billing_type', 'currency'])
                 ->find($subscriptionId);
-
             if (!$subscription) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Company subscription not found',
-                    'data' => null
-                ], 404);
+                return response()->json(['success' => false, 'message' => 'Company subscription not found', 'data' => null], 404);
             }
 
-            // Verify invoice exists and belongs to subscription
+            // Verify invoice + load relations
             $invoice = CompanySubscriptionInvoice::where('company_subscription_id', $subscriptionId)
                 ->with(['rate_type', 'tax_rate', 'currency'])
                 ->find($invoiceId);
-
             if (!$invoice) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Invoice not found',
-                    'data' => null
-                ], 404);
+                return response()->json(['success' => false, 'message' => 'Invoice not found', 'data' => null], 404);
             }
 
-            // Get invoice date range
             $fromDate = Carbon::parse($invoice->from_date);
-            $toDate = Carbon::parse($invoice->to_date);
+            $toDate   = Carbon::parse($invoice->to_date);
 
-            // Get all check-ins with filters (same as index method)
+            // Build check-ins query (same filters as index)
             $query = CompanySubscriptionMemberCheckIn::whereHas('company_subscription_member', function ($q) use ($subscriptionId) {
                 $q->where('company_subscription_id', $subscriptionId);
             })
@@ -611,115 +596,97 @@ class CompanySubscriptionInvoiceCheckInController extends Controller
                     'created_by'
                 ]);
 
-            // Apply filters
-            if ($request->has('date_from') && $request->date_from) {
-                //      $query->whereDate('datetime', '>=', $request->date_from);
+            // Apply optional filters
+            if ($request->filled('date_from')) {
+                $query->whereDate('datetime', '>=', $request->date_from);
             }
-
-            if ($request->has('date_to') && $request->date_to) {
+            if ($request->filled('date_to')) {
                 $query->whereDate('datetime', '<=', $request->date_to);
             }
-
-            if ($request->has('status') && in_array($request->status, ['pending', 'completed', 'failed'])) {
+            if ($request->filled('status') && in_array($request->status, ['pending', 'completed', 'failed'])) {
                 $query->where('status', $request->status);
             }
-
-            if ($request->has('check_in_method_id') && $request->check_in_method_id) {
+            if ($request->filled('check_in_method_id')) {
                 $query->where('check_in_method_id', $request->check_in_method_id);
             }
-
-            if ($request->has('member_id') && $request->member_id) {
-                $query->whereHas('company_subscription_member', function ($q) use ($request) {
-                    $q->where('member_id', $request->member_id);
-                });
+            if ($request->filled('member_id')) {
+                $query->whereHas('company_subscription_member', fn($q) => $q->where('member_id', $request->member_id));
             }
 
             $query->orderBy('datetime', 'desc');
+
             $checkIns = $query->get();
 
+            // Transform check-ins + embed base64 signatures
             $exportData = $checkIns->map(function ($checkIn) {
-                // Get signature as base64 for PDF
                 $signatureBase64 = null;
+
                 if (!empty($checkIn->signature)) {
                     try {
-                        $signaturePath = $checkIn->signature;
+                        $path = $checkIn->signature;
 
-                        // Method 1: Check if it's in storage
-                        if (Storage::exists($signaturePath)) {
-                            $mimeType = Storage::mimeType($signaturePath);
-                            $imageData = base64_encode(Storage::get($signaturePath));
-                            $signatureBase64 = 'data:' . $mimeType . ';base64,' . $imageData;
-                        }
-                        // Method 2: Check if it's a full URL
-                        elseif (filter_var($signaturePath, FILTER_VALIDATE_URL)) {
-                            // Use Guzzle or CURL instead of file_get_contents for better reliability
-                            $client = new \GuzzleHttp\Client([
-                                'timeout' => 5,
-                                'verify' => false, // Disable SSL verification for local/dev
-                            ]);
-
-                            try {
-                                $response = $client->get($signaturePath);
-                                if ($response->getStatusCode() === 200) {
-                                    $imageData = $response->getBody()->getContents();
-                                    // Try to detect mime type from content
-                                    $mimeType = $this->detectMimeTypeFromContent($imageData);
-                                    $signatureBase64 = 'data:' . $mimeType . ';base64,' . base64_encode($imageData);
-                                }
-                            } catch (\Exception $e) {
-                                // Log and continue
-                                Log::warning('Failed to download signature from URL: ' . $e->getMessage());
+                        if (Storage::exists($path)) {
+                            $content  = Storage::get($path);
+                            $mimeType = Storage::mimeType($path);
+                            $signatureBase64 = 'data:' . $mimeType . ';base64,' . base64_encode($content);
+                        } elseif (filter_var($path, FILTER_VALIDATE_URL)) {
+                            $client = new \GuzzleHttp\Client(['timeout' => 6, 'verify' => false]);
+                            $response = $client->get($path);
+                            if ($response->getStatusCode() === 200) {
+                                $content     = $response->getBody()->getContents();
+                                $finfo       = new finfo(FILEINFO_MIME_TYPE);
+                                $mimeType    = $finfo->buffer($content) ?: 'image/png';
+                                $signatureBase64 = 'data:' . $mimeType . ';base64,' . base64_encode($content);
                             }
-                        }
-                        // Method 3: Check if it's a local public file
-                        elseif (file_exists(public_path($signaturePath))) {
-                            $filePath = public_path($signaturePath);
-                            $imageData = file_get_contents($filePath);
-                            $mimeType = mime_content_type($filePath);
-                            $signatureBase64 = 'data:' . $mimeType . ';base64,' . base64_encode($imageData);
+                        } elseif (file_exists(public_path($path))) {
+                            $fullPath = public_path($path);
+                            $content  = file_get_contents($fullPath);
+                            $mimeType = mime_content_type($fullPath);
+                            $signatureBase64 = 'data:' . $mimeType . ';base64,' . base64_encode($content);
                         }
                     } catch (\Exception $e) {
-                        //Log::warning('Failed to load signature for check-in ' . $checkIn->id . ': ' . $e->getMessage());
-                        $signatureBase64 = null;
+                        Log::warning("Failed to load signature for check-in {$checkIn->id}: " . $e->getMessage());
                     }
                 }
 
                 $member = $checkIn->company_subscription_member->member ?? null;
-
-                $memberFullName = collect([
-                    $member->first_name ?? null,
-                    $member->last_name ?? null,
-                ])->filter()->implode(' ');
+                $memberFullName = collect([$member?->first_name, $member?->last_name])
+                    ->filter()
+                    ->implode(' ');
 
                 return [
-                    'date' => Carbon::parse($checkIn->datetime)->format('Y-m-d'),
-                    'time' => Carbon::parse($checkIn->datetime)->format('H:i:s'),
-                    'member_name' => $memberFullName ?: 'N/A',
-                    'check_in_method' => $checkIn->check_in_method->name ?? 'N/A',
-                    'status' => $checkIn->status,
-                    'branch' => $checkIn->branch->name ?? 'N/A',
-                    'notes' => $checkIn->notes ?? '',
-                    'created_by' => $checkIn->created_by->name ?? 'N/A',
-                    'has_signature' => !empty($checkIn->signature),
+                    'date'             => Carbon::parse($checkIn->datetime)->format('Y-m-d'),
+                    'time'             => Carbon::parse($checkIn->datetime)->format('H:i:s'),
+                    'member_name'      => $memberFullName ?: 'N/A',
+                    'check_in_method'  => $checkIn->check_in_method->name ?? 'N/A',
+                    'status'           => $checkIn->status,
+                    'branch'           => $checkIn->branch->name ?? 'N/A',
+                    'notes'            => $checkIn->notes ?? '',
+                    'created_by'       => $checkIn->created_by->name ?? 'N/A',
+                    'has_signature'    => !empty($checkIn->signature),
                     'signature_base64' => $signatureBase64,
-                    'signature_path' => $checkIn->signature,
+                    'signature_path'   => $checkIn->signature,
                 ];
             })->toArray();
-
-            // return response()->json([
-            //     'data' => $exportData
-            // ]);
 
             // Calculate summary
             $summary = $this->calculateSummary($checkIns, $fromDate, $toDate);
 
-            // Generate PDF using mPDF and Blade template
+            // Generate PDF → now returns a proper Response with CORS
             return $this->generatePdf($exportData, $summary, $company, $subscription, $invoice);
         } catch (\Exception $e) {
+            Log::error('Check-ins export failed', [
+                'company_id'      => $companyId,
+                'subscription_id' => $subscriptionId,
+                'invoice_id'      => $invoiceId,
+                'error'           => $e->getMessage(),
+                'trace'           => $e->getTraceAsString(),
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage(),
-                'data' => null
+                'message' => $e->getMessage() ?: 'Failed to generate PDF export',
+                'data'    => null
             ], 500);
         }
     }
@@ -807,56 +774,60 @@ class CompanySubscriptionInvoiceCheckInController extends Controller
     /**
      * Generate PDF using mPDF and Blade template
      */
-    private function generatePdf($data, $summary, $company, $subscription, $invoice)
+    private function generatePdf(array $data, array $summary, $company, $subscription, $invoice)
     {
-        $fileName = 'checkins_invoice_' . $invoice->reference . '_' . date('Ymd_His') . '.pdf';
+        $fileName = 'checkins_invoice_' . $invoice->reference . '_' . now()->format('Ymd_His') . '.pdf';
 
-        // Render Blade template
         $html = view('exports.company.invoice.checkins', [
-            'data' => $data,
-            'summary' => $summary,
-            'company' => $company,
+            'data'        => $data,
+            'summary'     => $summary,
+            'company'     => $company,
             'subscription' => $subscription,
-            'invoice' => $invoice,
+            'invoice'     => $invoice,
             'generated_at' => now()->format('Y-m-d H:i:s'),
         ])->render();
 
-        // Create mPDF instance
         $mpdf = new Mpdf([
-            'mode' => 'utf-8',
-            'format' => 'A4-L', // Landscape orientation
+            'mode'              => 'utf-8',
+            'format'            => 'A4-L', // landscape
             'default_font_size' => 10,
-            'default_font' => 'dejavusans', // Supports UTF-8
-            'margin_left' => 10,
-            'margin_right' => 10,
-            'margin_top' => 15,
-            'margin_bottom' => 15,
-            'margin_header' => 5,
-            'margin_footer' => 5,
-            'enable_remote' => true
+            'default_font'      => 'dejavusans',
+            'margin_left'       => 10,
+            'margin_right'      => 10,
+            'margin_top'        => 15,
+            'margin_bottom'     => 15,
+            'margin_header'     => 5,
+            'margin_footer'     => 5,
+            'enable_remote'     => true,
         ]);
 
-        // Set document information
         $mpdf->SetTitle('Check-ins Report - Invoice ' . $invoice->reference);
-        $mpdf->SetAuthor('System');
-        $mpdf->SetCreator('Company Subscription System');
+        $mpdf->SetAuthor($company->name ?? 'System');
+        $mpdf->SetCreator('Fitness Point System');
 
-        // Add header
         $mpdf->SetHTMLHeader('
         <div style="text-align: center; border-bottom: 1px solid #ddd; padding-bottom: 5px; margin-bottom: 10px;">
-            <span style="font-size: 12px; color: #666;">Check-ins Report - Invoice ' . $invoice->reference . '</span>
+            <span style="font-size: 12px; color: #666;">Check-ins Report - Invoice ' . $invoice->reference . ' - ' . $company->name . '</span>
         </div>');
 
-        // Add footer with page numbers
         $mpdf->SetHTMLFooter('
         <div style="text-align: center; font-size: 9px; color: #666; border-top: 1px solid #ddd; padding-top: 5px;">
             Page {PAGENO} of {nbpg} | Generated on ' . now()->format('Y-m-d H:i:s') . '
         </div>');
 
-        // Write HTML content
         $mpdf->WriteHTML($html);
 
-        // Output PDF for download
-        return $mpdf->Output($fileName, 'D');
+        // Get PDF content as string
+        $pdfContent = $mpdf->Output('', 'S');
+
+        // Return Laravel response with CORS headers
+        return response($pdfContent, 200)
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'attachment; filename="' . $fileName . '"')
+            // CORS – change * to your frontend domain(s) in production
+            ->header('Access-Control-Allow-Origin', '*')
+            ->header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+            ->header('Access-Control-Allow-Headers', 'Authorization, Content-Type, Accept, X-Requested-With')
+            ->header('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type');
     }
 }

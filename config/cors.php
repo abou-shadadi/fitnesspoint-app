@@ -12,7 +12,7 @@ return [
 
     'allowed_headers' => ['*'], // allow all headers
 
-    'exposed_headers' => [],
+    'exposed_headers' => ['Content-Disposition'], // for downloads
 
     'max_age' => 0,
 

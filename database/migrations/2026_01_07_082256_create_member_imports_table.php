@@ -19,7 +19,7 @@ return new class extends Migration
 
             $table->foreignId('branch_id')->constrained('branches'); // always to be provided
             // member_subscription_id
-            $table->foreignId('member_subscription_id')->nullable()->constrained();
+            $table->foreignId('plan_id')->nullable()->constrained();
             // company_subscription_id
             $table->foreignId('company_subscription_id')->nullable()->constrained();
 

@@ -20,15 +20,14 @@ class MembersImport implements ToCollection, WithHeadingRow
 {
     protected $predefinedColumns = [
         'reference',
-        'first_name',
-        'last_name',
+        'name',
         'gender',
         'national_id_number',
         'date_of_birth',
         'phone',
         'email',
         'address',
-        'membership_start_date', // For individual members
+        'membership_start_date',
     ];
 
     public $branch, $user, $importId;
@@ -36,6 +35,8 @@ class MembersImport implements ToCollection, WithHeadingRow
     protected $failedRows = [];
     protected $successCount = 0;
     protected $failedCount = 0;
+    protected $type;
+    protected $importRecord;
 
     public function __construct($branchId, $userId, $importId = null, $memberSubscriptionId = null, $companySubscriptionId = null)
     {
@@ -52,46 +53,63 @@ class MembersImport implements ToCollection, WithHeadingRow
         $this->importId = $importId;
         $this->memberSubscriptionId = $memberSubscriptionId;
         $this->companySubscriptionId = $companySubscriptionId;
+
+        // Get import record and type
+        if ($importId) {
+            $this->importRecord = \App\Models\Member\MemberImport::find($importId);
+            $this->type = $this->importRecord->type ?? 'corporate';
+        } else {
+            $this->type = 'corporate';
+        }
     }
 
     public function collection(Collection $rows)
     {
-        Log::info('Starting Member Import Collection...');
+        Log::info('Starting Member Import Collection...', [
+            'import_id' => $this->importId,
+            'type' => $this->type,
+            'total_rows' => $rows->count()
+        ]);
 
         // Reset counters
         $this->successCount = 0;
         $this->failedCount = 0;
+        $this->failedRows = [];
 
-        // Process each row independently
+        // Process each row
         foreach ($rows as $rowNumber => $row) {
-            if ($rowNumber === 0) {
-                // Skip header row
+            $excelRowNumber = $rowNumber + 2; // +2 because: +1 for 1-indexed, +1 for header row
+
+            try {
+                // Process the row
+                $this->processRow($row, $excelRowNumber);
+            } catch (\Exception $e) {
+                // This should not happen as processRow catches its own exceptions
+                Log::error("Unexpected error processing row {$excelRowNumber}: " . $e->getMessage());
                 continue;
             }
-
-            // Process each row independently
-            $this->processRow($row, $rowNumber);
         }
 
-        Log::info("Member import completed. Success: {$this->successCount}, Failed: {$this->failedCount}");
+        Log::info("Member import completed.", [
+            'import_id' => $this->importId,
+            'success_count' => $this->successCount,
+            'failed_count' => $this->failedCount
+        ]);
     }
 
     private function processRow($row, $rowNumber)
     {
-        $importComment = '';
-        $excelRowNumber = $rowNumber + 1; // Excel rows are 1-indexed
-        Log::info("Processing row {$excelRowNumber}");
+        Log::debug("Processing row {$rowNumber}");
 
         try {
-            // Skip empty rows (where all required fields are empty)
+            // Skip empty rows
             if ($this->isRowEmpty($row)) {
-                Log::info("Skipping empty row {$excelRowNumber}");
+                Log::debug("Skipping empty row {$rowNumber}");
                 return;
             }
 
-            // Validate only this row
-            $validationResult = $this->validateSingleRow($row, $excelRowNumber);
-
+            // Validate the row
+            $validationResult = $this->validateSingleRow($row, $rowNumber);
             if (!$validationResult['valid']) {
                 throw new \Exception($validationResult['errors']);
             }
@@ -110,10 +128,13 @@ class MembersImport implements ToCollection, WithHeadingRow
             // Parse phone
             $phone = $this->parsePhone($row['phone'] ?? null);
 
-            // Create member in a transaction for this row only
+            // Parse name into first_name and last_name
+            $nameParts = $this->parseName($row['name'] ?? '');
+
+            // Create member in a transaction
             DB::beginTransaction();
             try {
-                $member = $this->createMember($row, $gender, $phone);
+                $member = $this->createMember($row, $nameParts, $gender, $phone);
                 DB::commit();
 
                 Log::info("Successfully created member: {$member->reference}");
@@ -125,12 +146,18 @@ class MembersImport implements ToCollection, WithHeadingRow
             }
 
         } catch (\Exception $e) {
-            // Log error and continue processing other rows
-            $this->handleRowError($row, $excelRowNumber, $e->getMessage(), $importComment);
+            // Log the error to MemberImportLog
+            $this->logFailedRowToDatabase($row, $rowNumber, $e->getMessage());
+
+            // Add to failed rows collection for export
+            $this->addFailedRow($row, $rowNumber, $e->getMessage());
+
+            // Increment failed count
             $this->failedCount++;
 
-            // Continue to next row - don't throw exception
-            return;
+            Log::warning("Failed to import row {$rowNumber}: " . $e->getMessage());
+
+            // Continue processing other rows - DO NOT re-throw
         }
     }
 
@@ -139,23 +166,25 @@ class MembersImport implements ToCollection, WithHeadingRow
         // Convert row to array for validation
         $rowData = $row->toArray();
 
-        // Define validation rules for this specific row
+        // Define validation rules
         $rules = [
-            'first_name' => 'required|string|max:255',
-            'last_name' => 'required|string|max:255',
+            'name' => 'required|string|max:255',
             'gender' => 'nullable|in:male,female,Male,Female,M,F,other,Other',
             'date_of_birth' => 'nullable',
             'email' => 'nullable|email|unique:members,email',
             'national_id_number' => 'nullable',
             'reference' => 'nullable|string|unique:members,reference',
             'phone' => 'nullable',
-            'membership_start_date' => 'nullable|date',
         ];
+
+        // Add membership start date rule for individual imports
+        if ($this->type === 'individual') {
+            $rules['membership_start_date'] = 'nullable|date';
+        }
 
         // Custom error messages
         $customMessages = [
-            'first_name.required' => 'First name is required',
-            'last_name.required' => 'Last name is required',
+            'name.required' => 'Name is required',
             'gender.in' => 'Gender must be Male, Female, or Other',
             'email.email' => 'Email must be a valid email address',
             'email.unique' => 'Email already exists',
@@ -167,7 +196,6 @@ class MembersImport implements ToCollection, WithHeadingRow
         $validator = Validator::make($rowData, $rules, $customMessages);
 
         if ($validator->fails()) {
-            // Collect all error messages for this row
             $errorMessages = [];
             foreach ($validator->errors()->all() as $error) {
                 $errorMessages[] = $error;
@@ -184,7 +212,7 @@ class MembersImport implements ToCollection, WithHeadingRow
 
     private function isRowEmpty($row)
     {
-        $requiredFields = ['first_name', 'last_name'];
+        $requiredFields = ['name'];
 
         foreach ($requiredFields as $field) {
             if (!empty($row[$field])) {
@@ -195,30 +223,76 @@ class MembersImport implements ToCollection, WithHeadingRow
         return true;
     }
 
-    private function handleRowError($row, $rowNumber, $errorMessage, $importComment)
+    private function parseName($name)
     {
-        $rowData = $row->toArray();
-        $rowData['row'] = $rowNumber;
-        $rowData['comment'] = $importComment ?: $errorMessage;
+        if (empty($name)) {
+            throw new \Exception('Name is required');
+        }
 
-        Log::error("Error in row {$rowNumber}: {$errorMessage}");
-        $this->logFailedRow($rowData, $rowNumber, $errorMessage);
+        $name = trim($name);
+
+        // Split name by spaces
+        $parts = preg_split('/\s+/', $name, 2);
+
+        if (count($parts) === 1) {
+            return [
+                'first_name' => $parts[0],
+                'last_name' => ''
+            ];
+        } else {
+            return [
+                'first_name' => $parts[0],
+                'last_name' => $parts[1]
+            ];
+        }
     }
 
-    private function logFailedRow($rowData, $rowNumber, $errorMessage)
+    private function logFailedRowToDatabase($row, $rowNumber, $errorMessage)
     {
         if ($this->importId) {
             try {
                 MemberImportLog::create([
-                    'log_message' => "Error in row {$rowNumber}: {$errorMessage}",
                     'member_import_id' => $this->importId,
+                    'log_message' => $errorMessage,
                     'is_resolved' => false,
-                    'data' => $rowData,
+                    'data' => [
+                        'row_number' => $rowNumber,
+                        'row_data' => $row->toArray(),
+                        'error' => $errorMessage,
+                        'failed_at' => now()->toDateTimeString()
+                    ],
                 ]);
+
+                Log::debug("Logged failed row {$rowNumber} to MemberImportLog");
             } catch (\Exception $e) {
-                Log::error("Failed to create import log: " . $e->getMessage());
+                Log::error("Failed to create import log for row {$rowNumber}: " . $e->getMessage());
             }
         }
+    }
+
+    private function addFailedRow($row, $rowNumber, $errorMessage)
+    {
+        $rowData = $row->toArray();
+
+        // Prepare failed row data for export
+        $failedRow = [
+            'Reference' => $rowData['reference'] ?? '',
+            'Name' => $rowData['name'] ?? '',
+            'Gender' => $rowData['gender'] ?? '',
+            'National ID Number' => $rowData['national_id_number'] ?? '',
+            'Date of Birth' => $rowData['date_of_birth'] ?? '',
+            'Phone' => $rowData['phone'] ?? '',
+            'Email' => $rowData['email'] ?? '',
+            'Address' => $rowData['address'] ?? '',
+            'Error Message' => $errorMessage,
+        ];
+
+        // Add membership start date for individual imports
+        if ($this->type === 'individual') {
+            $failedRow['Membership Start Date'] = $rowData['membership_start_date'] ?? '';
+        }
+
+        $this->failedRows[] = $failedRow;
     }
 
     public function headingRow(): int
@@ -246,17 +320,20 @@ class MembersImport implements ToCollection, WithHeadingRow
     private function checkMemberExistence($row)
     {
         // Check by reference
-        if (isset($row['reference']) && Member::where('reference', $row['reference'])->exists()) {
+        if (isset($row['reference']) && !empty($row['reference']) &&
+            Member::where('reference', $row['reference'])->exists()) {
             throw new \Exception('Member with this reference already exists');
         }
 
         // Check by email
-        if (isset($row['email']) && Member::where('email', $row['email'])->exists()) {
+        if (isset($row['email']) && !empty($row['email']) &&
+            Member::where('email', $row['email'])->exists()) {
             throw new \Exception('Member with this email already exists');
         }
 
         // Check by national ID
-        if (isset($row['national_id_number']) && Member::where('national_id_number', $row['national_id_number'])->exists()) {
+        if (isset($row['national_id_number']) && !empty($row['national_id_number']) &&
+            Member::where('national_id_number', $row['national_id_number'])->exists()) {
             throw new \Exception('Member with this national ID number already exists');
         }
     }
@@ -268,8 +345,6 @@ class MembersImport implements ToCollection, WithHeadingRow
         }
 
         $phone = trim((string) $phone);
-
-        // Remove all non-digit characters except plus
         $cleaned = preg_replace('/[^\d\+]/', '', $phone);
 
         // Default country code for Rwanda
@@ -277,25 +352,20 @@ class MembersImport implements ToCollection, WithHeadingRow
 
         // Handle different phone formats
         if (Str::startsWith($cleaned, '250')) {
-            // Format: 2507XXXXXXXXX
             $number = substr($cleaned, 3);
             $code = '250';
         } elseif (Str::startsWith($cleaned, '07')) {
-            // Format: 07XXXXXXXXX
             $number = substr($cleaned, 1);
             $code = '250';
         } elseif (Str::startsWith($cleaned, '7')) {
-            // Format: 7XXXXXXXXX
             $number = $cleaned;
             $code = '250';
         } elseif (Str::startsWith($cleaned, '+')) {
-            // Format: +2507XXXXXXXXX
             $cleaned = ltrim($cleaned, '+');
             if (Str::startsWith($cleaned, '250')) {
                 $number = substr($cleaned, 3);
                 $code = '250';
             } else {
-                // Other country code
                 preg_match('/^(\d{1,3})(\d+)/', $cleaned, $matches);
                 if (count($matches) === 3) {
                     $code = $matches[1];
@@ -306,7 +376,6 @@ class MembersImport implements ToCollection, WithHeadingRow
                 }
             }
         } else {
-            // Unknown format, use default
             $number = $cleaned;
             $code = '250';
         }
@@ -322,7 +391,7 @@ class MembersImport implements ToCollection, WithHeadingRow
         }
 
         return [
-            'code' => '+' . $code,
+            'code' => $code ? '+' . $code : null,
             'number' => $number
         ];
     }
@@ -344,12 +413,11 @@ class MembersImport implements ToCollection, WithHeadingRow
                 }
             }
 
-            // Convert to string
             $dateStr = (string) $date;
 
             // Try to parse as year only (e.g., 1990)
             if (preg_match('/^\d{4}$/', $dateStr)) {
-                return $dateStr . '-01-01'; // Use January 1st of that year
+                return $dateStr . '-01-01';
             }
 
             // Try to parse as Carbon date
@@ -360,22 +428,28 @@ class MembersImport implements ToCollection, WithHeadingRow
         }
     }
 
-    private function createMember($row, $gender, $phone)
+    private function createMember($row, $nameParts, $gender, $phone)
     {
-        // Prepare member data
         $memberData = [
             'reference' => $row['reference'],
-            'first_name' => $row['first_name'],
-            'last_name' => $row['last_name'],
+            'first_name' => $nameParts['first_name'],
+            'last_name' => $nameParts['last_name'],
             'gender' => $gender,
             'date_of_birth' => $this->parseDate($row['date_of_birth'] ?? null),
             'email' => $row['email'] ?? null,
             'national_id_number' => $this->parseNationalId($row['national_id_number'] ?? null),
-            'phone' => $phone,
             'address' => $row['address'] ?? null,
             'created_by_id' => $this->user->id,
-            // 'branch_id' => $this->branch->id,
+            'branch_id' => $this->branch->id,
         ];
+
+        // Add phone if available
+        if ($phone) {
+            $memberData['phone'] = [
+                'code' => $phone['code'],
+                'number' => $phone['number']
+            ];
+        }
 
         // Add subscription references if provided
         if ($this->memberSubscriptionId) {
@@ -387,14 +461,13 @@ class MembersImport implements ToCollection, WithHeadingRow
         }
 
         // Parse membership start date for individual members
-        if (isset($row['membership_start_date'])) {
+        if ($this->type === 'individual' && isset($row['membership_start_date'])) {
             $startDate = $this->parseDate($row['membership_start_date']);
             if ($startDate) {
                 $memberData['membership_start_date'] = $startDate;
             }
         }
 
-        // Create the member
         return Member::create($memberData);
     }
 
@@ -404,11 +477,8 @@ class MembersImport implements ToCollection, WithHeadingRow
             return null;
         }
 
-        // Convert to string and trim
         $nationalId = (string) $nationalId;
-        $nationalId = trim($nationalId);
-
-        return $nationalId;
+        return trim($nationalId);
     }
 
     private function generateMemberReference()
@@ -424,7 +494,6 @@ class MembersImport implements ToCollection, WithHeadingRow
     {
         return $this->failedRows;
     }
-
     public function getImportStatistics()
     {
         return [

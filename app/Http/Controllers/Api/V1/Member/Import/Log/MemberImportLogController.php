@@ -256,8 +256,7 @@ class MemberImportLogController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'data' => 'required|array',
-            'data.first_name' => 'required|string|max:255',
-            'data.last_name' => 'required|string|max:255',
+            'data.name' => 'required|string|max:255',
             'data.gender' => 'nullable|in:male,female,Male,Female,other,Other',
             'data.date_of_birth' => 'nullable',
             'data.email' => 'nullable|email',
@@ -311,7 +310,7 @@ class MemberImportLogController extends Controller
             ]);
 
             // Store update metadata separately
-            $importLog->update_metadata = $updateMetadata;
+            // $importLog->update_metadata = $updateMetadata;
             $importLog->save();
 
             return response()->json([

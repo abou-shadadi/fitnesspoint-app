@@ -14,13 +14,6 @@ class MemberImport extends Model
     protected $casts = [
         'data' => 'array',
     ];
-
-    // Relationships
-    public function user()
-    {
-        return $this->belongsTo(\App\Models\User::class, 'created_by_id');
-    }
-
     public function company()
     {
         return $this->belongsTo(\App\Models\Company\Company::class);
@@ -50,5 +43,27 @@ class MemberImport extends Model
     public function getImportedFileUrlAttribute()
     {
         return $this->imported_file ? storage_path('app/' . $this->imported_file) : null;
+    }
+
+    public function company_subscription()
+    {
+        return $this->belongsTo(\App\Models\Company\CompanySubscription::class);
+    }
+
+    public function plan()
+    {
+        return $this->belongsTo(\App\Models\Plan\Plan::class);
+    }
+
+    // Rename the relationship for consistency
+    public function createdBy()
+    {
+        return $this->belongsTo(\App\Models\User::class, 'created_by_id');
+    }
+
+    // Keep this as alias for backward compatibility if needed
+    public function user()
+    {
+        return $this->createdBy();
     }
 }

@@ -114,12 +114,6 @@ class MemberImportController extends Controller
      *                     example="members.csv"
      *                 ),
      *                 @OA\Property(
-     *                     property="member_subscription_id",
-     *                     type="integer",
-     *                     description="Member subscription ID (optional)",
-     *                     example=1
-     *                 ),
-    *                 @OA\Property(
      *                     property="plan_id",
      *                     type="integer",
      *                     description="Plan ID (optional- mainly for members to be registered in a certain domain)",
@@ -158,8 +152,7 @@ class MemberImportController extends Controller
         $validator = Validator::make($request->all(), [
             'file' => 'required|file|mimes:xlsx,xls,csv',
             'branch_id' => 'required|exists:branches,id',
-            'member_subscription_id' => 'nullable|exists:member_subscriptions,id',
-            'plan_id' => 'nullable|exists:member_subscriptions,id',
+            'plan_id' => 'nullable|exists:plans,id',
             'company_subscription_id' => 'nullable|exists:company_subscriptions,id',
         ]);
 
@@ -179,7 +172,7 @@ class MemberImportController extends Controller
             $memberImport = MemberImport::create([
                 'file' => $filePath,
                 'branch_id' => $request->branch_id,
-                'member_subscription_id' => $request->member_subscription_id,
+                'plan_id' => $request->plan_id,
                 'company_subscription_id' => $request->company_subscription_id,
                 'created_by_id' => Auth::id(),
                 'status' => 'pending',
@@ -227,6 +220,18 @@ class MemberImportController extends Controller
      *                 type="integer",
      *                 description="Branch ID",
      *                 example=1
+     *             ),
+     *             @OA\Property(
+     *                 property="plan_id",
+     *                 type="integer",
+     *                 description="Plan ID",
+     *                 example=1
+     *             ),
+     *             @OA\Property(
+     *                 property="company_subscription_id",
+     *                 type="integer",
+     *                 description="Company subscription ID",
+     *                 example=1
      *             )
      *         )
      *     ),
@@ -249,6 +254,8 @@ class MemberImportController extends Controller
         $validator = Validator::make($request->all(), [
             'company_id' => 'nullable|exists:companies,id',
             'branch_id' => 'required|exists:branches,id',
+            'plan_id' => 'nullable|exists:plans,id',
+            'company_subscription_id' => 'nullable|exists:company_subscriptions,id',
         ]);
 
         if ($validator->fails()) {
@@ -282,6 +289,8 @@ class MemberImportController extends Controller
             $memberImport->update([
                 'company_id' => $request->company_id,
                 'branch_id' => $request->branch_id,
+                'plan_id' => $request->plan_id,
+                'company_subscription_id' => $request->company_subscription_id
             ]);
 
             return response()->json([
@@ -659,6 +668,63 @@ class MemberImportController extends Controller
                 'success' => true,
                 'message' => 'Bulk status updated successfully',
                 'data' => ['updated_count' => $updatedCount]
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'data' => null
+            ], 500);
+        }
+    }
+
+    /**
+     * @OA\Get(
+     *     path="/api/imports/member/{id}/stats",
+     *     tags={"Import | Members | Member Import"},
+     *     security={{"sanctum": {}}},
+     *     summary="Get import statistics",
+     *     @OA\Parameter(
+     *         name="id",
+     *         in="path",
+     *         required=true,
+     *         @OA\Schema(type="integer")
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Statistics retrieved",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="success", type="boolean", example=true),
+     *             @OA\Property(property="message", type="string", example="Statistics retrieved"),
+     *             @OA\Property(property="data", type="object")
+     *         )
+     *     )
+     * )
+     */
+    public function stats($id)
+    {
+        try {
+            $memberImport = MemberImport::withCount([
+                'member_import_logs',
+                'member_import_logs as success_count' => function ($query) {
+                    $query->where('status', 'success');
+                },
+                'member_import_logs as error_count' => function ($query) {
+                    $query->where('status', 'error');
+                }
+            ])->findOrFail($id);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Statistics retrieved',
+                'data' => [
+                    'total_records' => $memberImport->member_import_logs_count,
+                    'success_count' => $memberImport->success_count,
+                    'error_count' => $memberImport->error_count,
+                    'progress_percentage' => $memberImport->member_import_logs_count > 0
+                        ? round(($memberImport->success_count + $memberImport->error_count) / $memberImport->member_import_logs_count * 100, 2)
+                        : 0
+                ]
             ]);
         } catch (\Exception $e) {
             return response()->json([

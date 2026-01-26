@@ -25,8 +25,7 @@ class MemberImportSampleExport implements FromArray, WithHeadings, WithTitle, Wi
             return [
                 [
                     'MBR-2024-001',
-                    'John',
-                    'Doe',
+                    'John Doe',
                     'Male',
                     '1199999999999999',
                     '1990-01-15',
@@ -37,8 +36,7 @@ class MemberImportSampleExport implements FromArray, WithHeadings, WithTitle, Wi
                 ],
                 [
                     'MBR-2024-002',
-                    'Jane',
-                    'Smith',
+                    'Jane Smith',
                     'Female',
                     '1198888888888888',
                     '1992-05-20',
@@ -49,8 +47,7 @@ class MemberImportSampleExport implements FromArray, WithHeadings, WithTitle, Wi
                 ],
                 [
                     'MBR-2024-003',
-                    'Robert',
-                    'Johnson',
+                    'Robert Johnson',
                     'Male',
                     '1197777777777777',
                     '1985',
@@ -65,8 +62,7 @@ class MemberImportSampleExport implements FromArray, WithHeadings, WithTitle, Wi
             return [
                 [
                     'MBR-2024-001',
-                    'John',
-                    'Doe',
+                    'John Doe',
                     'Male',
                     '1199999999999999',
                     '1990-01-15',
@@ -76,8 +72,7 @@ class MemberImportSampleExport implements FromArray, WithHeadings, WithTitle, Wi
                 ],
                 [
                     'MBR-2024-002',
-                    'Jane',
-                    'Smith',
+                    'Jane Smith',
                     'Female',
                     '1198888888888888',
                     '1992-05-20',
@@ -87,8 +82,7 @@ class MemberImportSampleExport implements FromArray, WithHeadings, WithTitle, Wi
                 ],
                 [
                     'MBR-2024-003',
-                    'Robert',
-                    'Johnson',
+                    'Robert Johnson',
                     'Male',
                     '1197777777777777',
                     '1985',
@@ -104,8 +98,7 @@ class MemberImportSampleExport implements FromArray, WithHeadings, WithTitle, Wi
     {
         $headings = [
             'Reference',
-            'First Name',
-            'Last Name',
+            'Name',
             'Gender',
             'National ID Number',
             'Date of Birth',
@@ -116,7 +109,7 @@ class MemberImportSampleExport implements FromArray, WithHeadings, WithTitle, Wi
 
         // Add membership start date for individual members
         if ($this->type === 'individual') {
-            $headings[] = 'Membership Start Date (Optional: YYYY-MM-DD)';
+            $headings[] = 'Membership Start Date';
         }
 
         return $headings;
@@ -132,27 +125,25 @@ class MemberImportSampleExport implements FromArray, WithHeadings, WithTitle, Wi
         if ($this->type === 'individual') {
             return [
                 'A' => 30, // Reference
-                'B' => 20, // First Name
-                'C' => 20, // Last Name
-                'D' => 15, // Gender
-                'E' => 25, // National ID
-                'F' => 25, // Date of Birth
-                'G' => 25, // Phone
-                'H' => 30, // Email
-                'I' => 30, // Address
-                'J' => 25, // Membership Start Date
+                'B' => 25, // Name (combined first and last name)
+                'C' => 15, // Gender
+                'D' => 25, // National ID
+                'E' => 30, // Date of Birth (with format hint)
+                'F' => 25, // Phone
+                'G' => 30, // Email
+                'H' => 30, // Address
+                'I' => 25, // Membership Start Date
             ];
         } else {
             return [
                 'A' => 30, // Reference
-                'B' => 20, // First Name
-                'C' => 20, // Last Name
-                'D' => 15, // Gender
-                'E' => 25, // National ID
-                'F' => 25, // Date of Birth
-                'G' => 25, // Phone
-                'H' => 30, // Email
-                'I' => 30, // Address
+                'B' => 25, // Name (combined first and last name)
+                'C' => 15, // Gender
+                'D' => 25, // National ID
+                'E' => 30, // Date of Birth (with format hint)
+                'F' => 25, // Phone
+                'G' => 30, // Email
+                'H' => 30, // Address
             ];
         }
     }
@@ -160,7 +151,7 @@ class MemberImportSampleExport implements FromArray, WithHeadings, WithTitle, Wi
     public function styles(Worksheet $sheet)
     {
         // Get the number of columns based on type
-        $lastColumn = $this->type === 'individual' ? 'J' : 'I';
+        $lastColumn = $this->type === 'individual' ? 'I' : 'H';
 
         // Make header row bold
         $sheet->getStyle("A1:{$lastColumn}1")->getFont()->setBold(true);

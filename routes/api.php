@@ -717,6 +717,9 @@ Route::middleware('auth:sanctum')->group(function () {
         // Bulk status update
         Route::put('/bulk-status', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@bulkUpdateStatus');
 
+        // stats
+        Route::get('/stats', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@stats');
+
         Route::group(['prefix' => '{memberImportId}'], function () {
             Route::get('/', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@show');
             Route::put('/', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@update');
@@ -740,6 +743,8 @@ Route::middleware('auth:sanctum')->group(function () {
                     Route::delete('/', 'App\Http\Controllers\Api\V1\Member\Import\Log\MemberImportLogController@destroy');
                     // Retry failed row
                     Route::post('/retry', 'App\Http\Controllers\Api\V1\Member\Import\Log\MemberImportLogController@retry');
+                    // data
+                    Route::put('/data', 'App\Http\Controllers\Api\V1\Member\Import\Log\MemberImportLogController@updateData');
                 });
             });
         });

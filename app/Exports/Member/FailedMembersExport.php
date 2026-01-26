@@ -8,10 +8,12 @@ use Maatwebsite\Excel\Concerns\WithHeadings;
 class FailedMembersExport implements FromCollection, WithHeadings
 {
     protected $failedRows;
+    protected $type; // 'corporate' or 'individual'
 
-    public function __construct($failedRows)
+    public function __construct($failedRows, $type = 'corporate')
     {
         $this->failedRows = $failedRows;
+        $this->type = $type;
     }
 
     public function collection()
@@ -21,18 +23,24 @@ class FailedMembersExport implements FromCollection, WithHeadings
 
     public function headings(): array
     {
-        return [
+        $headings = [
             'Reference',
-            'First Name',
-            'Last Name',
+            'Name',
             'Gender',
             'National ID Number',
             'Date of Birth',
-            'Phone Code',
-            'Phone Number',
+            'Phone',
             'Email',
             'Address',
-            'Status',
+            'Error Message',
         ];
+
+        // Add membership start date for individual members
+        if ($this->type === 'individual') {
+            // Insert membership start date before error message
+            array_splice($headings, 8, 0, 'Membership Start Date');
+        }
+
+        return $headings;
     }
 }

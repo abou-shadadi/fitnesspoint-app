@@ -1,10 +1,8 @@
-laravel backednnapis rest..
-getting cold on download file from nextjs app
 <?php
 
 return [
 
-	/*
+    /*
 		    |--------------------------------------------------------------------------
 		    | Cross-Origin Resource Sharing (CORS) Configuration
 		    |--------------------------------------------------------------------------
@@ -17,23 +15,36 @@ return [
 		    |
 	*/
 
-	'paths' => ['api/*', 'sanctum/csrf-cookie', 'storage/*'],
 
-	'allowed_methods' => ['*'],
+    'paths' => ['api/*', 'sanctum/csrf-cookie'],
 
-	'allowed_origins' => ['*'],
+    'allowed_methods' => ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
 
-	'allowed_origins_patterns' => [],
+    // ❗ EXPLICIT ORIGINS — NO *
+    'allowed_origins' => [
+        'http://localhost:3000',
+        'https://fitnesspoint.rw',
+    ],
 
-	'allowed_headers' => ['*'],
+    'allowed_origins_patterns' => [],
 
-	'exposed_headers' => [],
+    // ❗ Explicit headers helps preflight
+    'allowed_headers' => [
+        'Content-Type',
+        'Authorization',
+        'X-Requested-With',
+        'Accept',
+        'Origin',
+    ],
 
-	'max_age' => 0,
+    // ❗ REQUIRED for downloads
+    'exposed_headers' => [
+        'Content-Disposition',
+        'Content-Type',
+        'Content-Length',
+    ],
 
-	'supports_credentials' => false,
+    'max_age' => 0,
 
-
-
-
+    'supports_credentials' => false,
 ];

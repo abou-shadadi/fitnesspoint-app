@@ -270,7 +270,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
                         Route::get('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CompanySubscriptionInvoiceController@index');
                         Route::post('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CompanySubscriptionInvoiceController@store');
-                        
+
                         Route::group(['prefix' => '{companySubInvId}'], function () {
                             Route::get('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CompanySubscriptionInvoiceController@show');
                             Route::put('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CompanySubscriptionInvoiceController@update');
@@ -290,7 +290,6 @@ Route::middleware('auth:sanctum')->group(function () {
                                     Route::get('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CheckIn\CompanySubscriptionInvoiceCheckInController@show');
                                     Route::put('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CheckIn\CompanySubscriptionInvoiceCheckInController@update');
                                     Route::delete('/', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CheckIn\CompanySubscriptionInvoiceCheckInController@destroy');
-
                                     // export
                                     Route::get('/export', 'App\Http\Controllers\Api\V1\Company\Subscription\Invoice\CheckIn\CompanySubscriptionInvoiceCheckInController@export');
                                 });
@@ -715,14 +714,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@index');
         Route::post('/', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@store');
 
-          // Sample file download
+        // Sample file download
         Route::get('/sample', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@downloadSample');
 
         // Bulk status update
         Route::put('/bulk-status', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@bulkUpdateStatus');
 
-        // stats
-        Route::get('/stats', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@stats');
+
 
         Route::group(['prefix' => '{memberImportId}'], function () {
             Route::get('/', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@show');
@@ -732,7 +730,8 @@ Route::middleware('auth:sanctum')->group(function () {
             // Download files
             Route::get('/download', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@download');
             Route::get('/download-failed', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@downloadFailed');
-
+            // stats
+            Route::get('/stats', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@stats');
             // Retry import
             Route::post('/retry', 'App\Http\Controllers\Api\V1\Member\Import\MemberImportController@retry');
 
@@ -752,7 +751,5 @@ Route::middleware('auth:sanctum')->group(function () {
                 });
             });
         });
-
-
     });
 });

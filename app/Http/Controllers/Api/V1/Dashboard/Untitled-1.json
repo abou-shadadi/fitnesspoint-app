@@ -1,0 +1,138 @@
+C{
+  "active_members": {
+    "total": "",  // count from Member where status isn active
+    "progress_previous_month": "" // count members where status is in_progress in the previous month in percentage(%)
+  },
+  "daily_attendance": {
+    "individual": {
+      "total": "", // count from MemberSubscriptionCheckin where status is completed
+      "progress_previous_day": "" // count from MemberSubscriptionCheckin where status is completed in the previous day in percentage(%)
+    },
+    "corporate": {
+      "total": "", // count from CompanySubscriptionCheckin where status is completed
+      "progress_previous_day": "" // count from CompanySubscriptionCheckin where status is completed in the previous day in percentage(%)
+    }
+  },
+  "expiring_soon": {
+    "individual": {
+      "total": "", // count from MemberSubscription where timestamp column end_date is in the next 7 days
+      "today": "" // count from MemberSubscription where timestamp column end_date is today
+    },
+    "corporate": {
+      "total": "", // count from CompanySubscription where date column end_date is in the next 7 days
+      "today": "" // count from CompanySubscription where date column end_date is today
+    }
+  },
+  "monthly_revenue": {
+    "corporate": {
+      "total_amount": "",  // sum paid_amount in CompanySubscriptionTransaction where status is completed
+      "progress_last_month": "" // sum paid_amount in CompanySubscriptionTransaction where status is completed in the previous month in percentage(%)
+    },
+    "individual": {
+      "total_amount": "", // sum paid_amount in MemberSubscriptionTransaction where status is completed
+      "progress_last_month": "" // sum paid_amount in MemberSubscriptionTransaction where status is completed in the previous month in percentage(%)
+    }
+  },
+  "weekly_check_ins": {
+   "individual": { // count from MemberSubscriptionCheckin where status is completed
+     "moday": {
+      "total": "" // count from MemberSubscriptionCheckin where status is completed and day is monday
+    },
+    "tuesday": {
+      "total": "" // count from MemberSubscriptionCheckin where status is completed and day is tuesday
+    },
+    "wednesday": {
+      "total": "" // count from MemberSubscriptionCheckin where status is completed and day is wednesday
+    },
+    "thursday": {
+      "total": "" // count from MemberSubscriptionCheckin where status is completed and day is thursday
+    },
+    "friday": {
+      "total": "" // count from MemberSubscriptionCheckin where status is completed and day is friday
+    },
+    "saturday": {
+      "total": "" // count from MemberSubscriptionCheckin where status is completed and day is saturday
+    },
+    "sunday": {
+      "total": "" // count from MemberSubscriptionCheckin where status is completed and day is sunday
+    }
+   },
+   "corporate": { // count from CompanySubscriptionCheckin where status is completed
+     "moday": {
+      "total": "" // count from CompanySubscriptionCheckin where status is completed and day is monday
+    },
+    "tuesday": {
+      "total": "" // count from CompanySubscriptionCheckin where status is completed and day is tuesday
+    },
+    "wednesday": {
+      "total": "" // count from CompanySubscriptionCheckin where status is completed and day is wednesday
+    },
+    "thursday": {
+      "total": "" // count from CompanySubscriptionCheckin where status is completed and day is thursday
+    },
+    "friday": {
+      "total": "" // count from CompanySubscriptionCheckin where status is completed and day is friday
+    },
+    "saturday": {
+      "total": "" // count from CompanySubscriptionCheckin where status is completed and day is saturday
+    },
+    "sunday": {
+      "total": "" // count from CompanySubscriptionCheckin where status is completed and day is sunday
+    }
+   }
+  },
+  "membership_distribution": {
+    "individual": {
+      "total": "",  // count all mebers in the Member Model where status is in_progress
+      "monthly": "", // we count MemberSubscription in that month where status is in_progress
+      "quarterly": "" // we count MemberSubscription in that quarter where status in_progress
+    }, 
+    "corporate": {
+      "total": "",  // we count all in CompanySubscriptionMember.company_subscription where company_subscription.statatus is in_progress
+      "monthly": "", ///  we count all in CompanySubscriptionMember where CompanySubscriptionMember.company_subscription.statatus and the is in_progress 
+      "quarterly": ""
+    }
+  },
+  "revenue_breakdown": {
+    "individual": {
+      "january": "", // sum paid_amount in MemberSubscriptionTransaction where status is completed and month is january
+      "february": "", // sum paid_amount in MemberSubscriptionTransaction where status is completed and month is february
+      "march": "", // sum paid_amount in MemberSubscriptionTransaction where status is completed and month is march
+      "may": "", // sum paid_amount in MemberSubscriptionTransaction where status is completed and month is may
+      "june": "", // sum paid_amount in MemberSubscriptionTransaction where status is completed and month is june
+      "jully": "", // sum paid_amount in MemberSubscriptionTransaction where status is completed and month is jully
+      "august": "", // sum paid_amount in MemberSubscriptionTransaction where status is completed and month is august
+      "september": "", // sum paid_amount in MemberSubscriptionTransaction where status is completed and month is september
+      "october": "", // sum paid_amount in MemberSubscriptionTransaction where status is completed and month is october
+      "november": "", // sum paid_amount in MemberSubscriptionTransaction where status is completed and month is november
+      "december": "" // sum paid_amount in MemberSubscriptionTransaction where status is completed and month is december
+    },
+    "corporate": {
+      "january": "", // sum paid_amount in CompanySubscriptionTransaction where status is completed and month is january
+      "february": "", // sum paid_amount in CompanySubscriptionTransaction where status is completed and month is february
+      "march": "", // sum paid_amount in CompanySubscriptionTransaction where status is completed and month is march
+      "may": "", // sum paid_amount in CompanySubscriptionTransaction where status is completed and month is may
+      "june": "", // sum paid_amount in CompanySubscriptionTransaction where status is completed and month is june
+      "jully": "", // sum paid_amount in CompanySubscriptionTransaction where status is completed and month is jully
+      "august": "", // sum paid_amount in CompanySubscriptionTransaction where status is completed and month is august
+      "september": "", // sum paid_amount in CompanySubscriptionTransaction where status is completed and month is september
+      "october": "", // sum paid_amount in CompanySubscriptionTransaction where status is completed and month is october
+      "november": "", // sum paid_amount in CompanySubscriptionTransaction where status is completed and month is november
+      "december": "" // sum paid_amount in CompanySubscriptionTransaction where status is completed and month is december
+    },
+
+    "individual_and_corporate": {
+      "january": "", // sum paid_amount in MemberSubscriptionTransaction and CompanySubscriptionTransaction where status is completed and month is january
+      "february": "", // sum paid_amount in MemberSubscriptionTransaction and CompanySubscriptionTransaction where status is completed and month is february
+      "march": "", // sum paid_amount in MemberSubscriptionTransaction and CompanySubscriptionTransaction where status is completed and month is march
+      "may": "", // sum paid_amount in MemberSubscriptionTransaction and CompanySubscriptionTransaction where status is completed and month is may
+      "june": "", // sum paid_amount in MemberSubscriptionTransaction and CompanySubscriptionTransaction where status is completed and month is june
+      "jully": "", // sum paid_amount in MemberSubscriptionTransaction and CompanySubscriptionTransaction where status is completed and month is jully
+      "august": "", // sum paid_amount in MemberSubscriptionTransaction and CompanySubscriptionTransaction where status is completed and month is august
+      "september": "", // sum paid_amount in MemberSubscriptionTransaction and CompanySubscriptionTransaction where status is completed and month is september
+      "october": "", // sum paid_amount in MemberSubscriptionTransaction and CompanySubscriptionTransaction where status is completed and month is october
+      "november": "", // sum paid_amount in MemberSubscriptionTransaction and CompanySubscriptionTransaction where status is completed and month is november
+      "december": "" // sum paid_amount in MemberSubscriptionTransaction and CompanySubscriptionTransaction where status is completed and month is december
+    }
+  }
+}

@@ -707,7 +707,7 @@ class MemberImportController extends Controller
             $memberImport = MemberImport::withCount([
                 'member_import_logs',
                 'member_import_logs as success_count' => function ($query) {
-                    $query->where('status', 'success');
+                    $query->where('status', 'completed');
                 },
                 'member_import_logs as error_count' => function ($query) {
                     $query->where('status', 'error');

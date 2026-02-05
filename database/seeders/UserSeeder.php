@@ -22,7 +22,7 @@ class UserSeeder extends Seeder
                 'last_name' => 'Doe',
                 'email' => 'john@example.com',
                 'phone' => json_encode(['code' => '+1', 'number' => '123456789']),
-                'password' => Hash::make('password'),
+                'password' => Hash::make('password',
                 'gender' => 'male',
                 'status' => 'active',
                 'is_admin' => true,

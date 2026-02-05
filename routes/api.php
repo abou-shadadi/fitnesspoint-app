@@ -167,6 +167,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/', 'App\Http\Controllers\Api\V1\Dashboard\MainDashboardController@index');
     });
 
+    // REPORTS
+    Route::group(['prefix' => 'reports'], function () {
+        Route::get('/', 'App\Http\Controllers\Api\V1\Report\MainReportController@index');
+    });
+
     // COMPANIES
     Route::group(['prefix' => 'companies'], function () {
 

@@ -472,8 +472,6 @@ class MainDashboardController extends Controller
             ],
              "revenue_breakdown" => $revenueBreakdown
         ]);
-
-
     }
 }
 

@@ -71,4 +71,9 @@ class Company extends Model implements HasMedia
     {
         return $this->hasMany(CompanySubscription::class);
     }
+
+    public function subscriptions()
+    {
+        return $this->hasMany(CompanySubscription::class);
+    }
 }

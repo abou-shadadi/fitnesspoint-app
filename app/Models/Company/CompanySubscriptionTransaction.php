@@ -19,10 +19,6 @@ class CompanySubscriptionTransaction extends Model
     }
 
 
-    public function company(){
-        return $this->belongsTo(\App\Models\Company\Company::class);
-    }
-
     public function created_by(){
         return $this->belongsTo(\App\Models\User::class);
     }

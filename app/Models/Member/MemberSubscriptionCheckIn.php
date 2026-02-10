@@ -35,4 +35,10 @@ class MemberSubscriptionCheckIn extends Model
     {
         return $this->belongsTo(\App\Models\User::class);
     }
+
+    public function completed()
+    {
+       // get completed itesm where status is completed
+        return $this->where('status', 'completed')->get();
+    }
 }

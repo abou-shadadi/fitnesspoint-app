@@ -31,6 +31,13 @@ class MainReportController extends Controller
      *     summary="Get Main Report Data",
      *     description="Returns comprehensive report data including Overview, Attendance, Corporate, and Insights.",
      *     security={{"sanctum":{}}},
+     *     @OA\Parameter(
+     *         name="branch_id",
+     *         in="query",
+     *         description="Filter by branch ID",
+     *         required=false,
+     *         @OA\Schema(type="integer")
+     *     ),
      *     @OA\Response(
      *         response=200,
      *         description="Successful operation",

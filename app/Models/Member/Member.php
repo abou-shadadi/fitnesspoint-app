@@ -60,4 +60,8 @@ class Member extends Model implements HasMedia
         return $this->belongsTo(\App\Models\User::class);
     }
 
+    public function subscriptions()
+    {
+        return $this->hasMany(\App\Models\Member\MemberSubscription::class);
+    }
 }

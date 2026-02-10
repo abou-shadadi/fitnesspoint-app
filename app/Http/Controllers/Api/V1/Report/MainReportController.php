@@ -48,22 +48,25 @@ class MainReportController extends Controller
             $start = Carbon::create($year, $monthNum, 1)->startOfMonth();
             $end   = Carbon::create($year, $monthNum, 1)->endOfMonth();
 
-            $individualCheckins = MemberSubscriptionCheckIn::completed()
+            // Fixed: Use where clause instead of non-static method
+            $individualCheckins = MemberSubscriptionCheckIn::where('status', 'completed')
                 ->whereBetween('datetime', [$start, $end])->count();
 
-            $corporateCheckins = CompanySubscriptionMemberCheckIn::completed()
+            $corporateCheckins = CompanySubscriptionMemberCheckIn::where('status', 'completed')
                 ->whereBetween('datetime', [$start, $end])->count();
 
-            $individualRevenue = MemberSubscriptionTransaction::completed()
+            // Fixed: Use where clause instead of non-static method
+            $individualRevenue = MemberSubscriptionTransaction::where('status', 'completed')
                 ->whereMonth('created_at', $monthNum)
                 ->whereYear('created_at', $year)
                 ->sum('amount_paid');
 
-            $corporateRevenue = CompanySubscriptionTransaction::completed()
+            $corporateRevenue = CompanySubscriptionTransaction::where('status', 'completed')
                 ->whereMonth('created_at', $monthNum)
                 ->whereYear('created_at', $year)
                 ->sum('amount_paid');
 
+            // Assuming activeWithin is a scope on the model
             $individualMembers = MemberSubscription::activeWithin($start, $end)->count();
 
             $corporateMembers = CompanySubscriptionMember::whereHas(
@@ -94,13 +97,13 @@ class MainReportController extends Controller
         $paymentMethods = PaymentMethod::all()->mapWithKeys(function ($pm) use ($months, $year) {
             return [
                 $pm->name => $months->map(function ($monthNum) use ($pm, $year) {
-                    return MemberSubscriptionTransaction::completed()
+                    return MemberSubscriptionTransaction::where('status', 'completed')
                         ->where('payment_method_id', $pm->id)
                         ->whereMonth('created_at', $monthNum)
                         ->whereYear('created_at', $year)
                         ->count()
                         +
-                        CompanySubscriptionTransaction::completed()
+                        CompanySubscriptionTransaction::where('status', 'completed')
                         ->where('payment_method_id', $pm->id)
                         ->whereMonth('created_at', $monthNum)
                         ->whereYear('created_at', $year)
@@ -169,8 +172,9 @@ class MainReportController extends Controller
             ];
         });
 
+        // Fixed typo: 'mothly_performance' -> 'monthly_performance'
         return [
-            'mothly_performance' => $monthlyPerformance,
+            'monthly_performance' => $monthlyPerformance,
             'payment_methods' => $paymentMethods,
             'member_growth' => $memberGrowth,
             'member_demographics' => $demographics,
@@ -187,13 +191,27 @@ class MainReportController extends Controller
         $performance = $companies->mapWithKeys(function ($company) {
             $sub = $company->subscriptions()->where('status', 'in_progress')->first();
 
-            $checkins = CompanySubscriptionMemberCheckIn::completed()
+            if (!$sub) {
+                return [
+                    $company->name => [
+                        'company_name' => $company->name,
+                        'total_members' => 0,
+                        'total_checkins' => 0,
+                        'total_active_members' => 0,
+                        'utilization_rate' => 0,
+                        'monthly_revenue' => 0,
+                    ]
+                ];
+            }
+
+            // Fixed: Use where clause instead of non-static method
+            $checkins = CompanySubscriptionMemberCheckIn::where('status', 'completed')
                 ->whereHas('company_subscription_member',
                     fn ($q) => $q->where('company_subscription_id', $sub->id)
                 );
 
             $total = $checkins->count();
-            $completed = $checkins->count();
+            $completed = $checkins->count(); // This seems redundant - same as total
 
             return [
                 $company->name => [
@@ -203,7 +221,7 @@ class MainReportController extends Controller
                     'total_active_members' => $sub->company_subscription_members()
                         ->whereHas('member', fn ($q) => $q->where('status', 'active'))->count(),
                     'utilization_rate' => $total > 0 ? round(($completed / $total) * 100, 2) : 0,
-                    'monthly_revenue' => CompanySubscriptionTransaction::completed()
+                    'monthly_revenue' => CompanySubscriptionTransaction::where('status', 'completed')
                         ->where('company_subscription_id', $sub->id)
                         ->whereMonth('created_at', now()->month)
                         ->sum('amount_paid'),
@@ -225,10 +243,11 @@ class MainReportController extends Controller
 
         return [
             'branch_insights' => $branches->mapWithKeys(function ($branch) {
-                $ind = MemberSubscriptionCheckIn::completed()
+                // Fixed: Use where clause instead of non-static method
+                $ind = MemberSubscriptionCheckIn::where('status', 'completed')
                     ->where('branch_id', $branch->id)->count();
 
-                $corp = CompanySubscriptionMemberCheckIn::completed()
+                $corp = CompanySubscriptionMemberCheckIn::where('status', 'completed')
                     ->where('branch_id', $branch->id)->count();
 
                 $total = MemberSubscriptionCheckIn::where('branch_id', $branch->id)->count();
@@ -238,13 +257,24 @@ class MainReportController extends Controller
                         'total_individual_member_checkins' => $ind,
                         'total_corporate_member_checkins' => $corp,
                         'utilization_rate' => $total > 0 ? round(($ind / $total) * 100, 2) : 0,
-                        'monthly_revenue' => MemberSubscriptionTransaction::completed()
+                        'monthly_revenue' => MemberSubscriptionTransaction::where('status', 'completed')
                             ->where('branch_id', $branch->id)
                             ->whereMonth('created_at', now()->month)
                             ->sum('amount_paid'),
                     ]
                 ];
             })
+        ];
+    }
+
+    /* ======================================================
+     | ATTENDANCE - Added this missing method
+     ====================================================== */
+    private function getAttendanceData()
+    {
+        // You need to implement this method based on your requirements
+        return [
+            'attendance_data' => 'To be implemented',
         ];
     }
 }

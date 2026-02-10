@@ -66,12 +66,20 @@ class MainReportController extends Controller
                 ->whereYear('created_at', $year)
                 ->sum('amount_paid');
 
-            // Assuming activeWithin is a scope on the model
-            $individualMembers = MemberSubscription::activeWithin($start, $end)->count();
+            // FIXED: Replace activeWithin scope with direct query
+            $individualMembers = MemberSubscription::where(function($query) use ($start, $end) {
+                // Active subscriptions that overlap with the given period
+                $query->where('start_date', '<=', $end)
+                      ->where('end_date', '>=', $start);
+            })->count();
 
+            // FIXED: Replace activeWithin scope with direct query for corporate
             $corporateMembers = CompanySubscriptionMember::whereHas(
                 'company_subscription',
-                fn ($q) => $q->activeWithin($start, $end)
+                function ($q) use ($start, $end) {
+                    $q->where('start_date', '<=', $end)
+                      ->where('end_date', '>=', $start);
+                }
             )->count();
 
             $individualExpiring = MemberSubscription::whereBetween('end_date', [$start, $end])->count();

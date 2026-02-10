@@ -98,6 +98,22 @@ Route::middleware('auth:sanctum')->group(function () {
 
                 Route::get('/', 'App\Http\Controllers\Api\V1\Role\User\UserController@index');
             });
+
+            // menus
+            Route::group(['prefix' => 'menus'], function () {
+
+                Route::get('/', 'App\Http\Controllers\Api\V1\Role\Menu\RoleMenuController@index');
+                Route::post('/', 'App\Http\Controllers\Api\V1\Role\Menu\RoleMenuController@store');
+
+                Route::group(['prefix' => '{menuId}'], function () {
+
+                    Route::get('/', 'App\Http\Controllers\Api\V1\Role\Menu\RoleMenuController@show');
+                    Route::put('/', 'App\Http\Controllers\Api\V1\Role\Menu\RoleMenuController@update');
+
+                    Route::delete('/', 'App\Http\Controllers\Api\V1\Role\Menu\RoleMenuController@destroy');
+                });
+
+            });
         });
     });
 
@@ -760,6 +776,30 @@ Route::middleware('auth:sanctum')->group(function () {
                     Route::put('/data', 'App\Http\Controllers\Api\V1\Member\Import\Log\MemberImportLogController@updateData');
                 });
             });
+        });
+    });
+
+
+    // Menus
+    Route::group(['prefix' => 'menus'], function () {
+        Route::get('/', 'App\Http\Controllers\Api\V1\Menu\MenuController@index');
+        Route::post('/', 'App\Http\Controllers\Api\V1\Menu\MenuController@store');
+        Route::group(['prefix' => '{id}'], function () {
+            Route::get('/', 'App\Http\Controllers\Api\V1\Menu\MenuController@show');
+            Route::put('/', 'App\Http\Controllers\Api\V1\Menu\MenuController@update');
+            Route::delete('/', 'App\Http\Controllers\Api\V1\Menu\MenuController@destroy');
+        });
+    });
+
+
+    // Menu Groups
+    Route::group(['prefix' => 'menu-groups'], function () {
+        Route::get('/', 'App\Http\Controllers\Api\V1\Menu\MenuGroupController@index');
+        Route::post('/', 'App\Http\Controllers\Api\V1\Menu\MenuGroupController@store');
+        Route::group(['prefix' => '{id}'], function () {
+            Route::get('/', 'App\Http\Controllers\Api\V1\Menu\MenuGroupController@show');
+            Route::put('/', 'App\Http\Controllers\Api\V1\Menu\MenuGroupController@update');
+            Route::delete('/', 'App\Http\Controllers\Api\V1\Menu\MenuGroupController@destroy');
         });
     });
 });

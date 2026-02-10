@@ -98,7 +98,7 @@ class User extends Authenticatable implements Auditable, HasMedia {
 	}
 
 	public function role() {
-		return $this->belongsTo(Role::class);
+		return $this->belongsTo(\App\Models\Role\Role::class);
 	}
 
 	public function notifications() {

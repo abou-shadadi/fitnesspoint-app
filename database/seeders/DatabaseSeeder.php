@@ -36,7 +36,9 @@ class DatabaseSeeder extends Seeder
             \Database\Seeders\TaxRateSeeder::class,
             \Database\Seeders\DiscountTypeSeeder::class,
             \Database\Seeders\BankSeeder::class,
-            \Database\Seeders\CompanyDesignationSeeder::class
+            \Database\Seeders\CompanyDesignationSeeder::class,
+            \Database\Seeders\RoleSeeder::class,
+            \Database\Seeders\MenuSeeder::class
         ]);
     }
 }

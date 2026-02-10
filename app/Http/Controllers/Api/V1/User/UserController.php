@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api\V1\User;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\User;
-use App\Models\Role;
+use App\Models\Role\Role;
 use App\Models\Account\UserRole;
 use Illuminate\Support\Facades\Hash;
 use Snowfire\Beautymail\Beautymail;
@@ -171,7 +171,7 @@ class UserController extends Controller
 
     public function index(Request $request)
     {
-      
+
 
         $users = User::with(['role', 'user_branches.branch'])->get();
 

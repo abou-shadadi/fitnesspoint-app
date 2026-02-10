@@ -55,10 +55,10 @@ class RoleSeeder extends Seeder
         ];
         foreach ($roles as $role) {
             // check if role already exists
-            $existingRole = \App\Models\Role::where('id', $role['id'])->first();
+            $existingRole = \App\Models\Role\Role::where('id', $role['id'])->first();
             if (!$existingRole) {
             }
-            \App\Models\Role::create($role);
+            \App\Models\Role\Role::create($role);
         }
     }
 }

@@ -255,6 +255,7 @@ class AuthController extends Controller {
 		if (Auth::check()) {
 			$user = User::with([
                 'role.permissions.feature',
+                'role.role_menus.menu.menu_group',
                 'user_branches'
             ])->find(Auth::user()->id);
 

@@ -18,12 +18,7 @@ return new class extends Migration
             $table->enum('status', ['active', 'inactive'])->default('active');
             $table->boolean('is_default')->default(0);
             $table->integer('order')->default(1);
-            $table->json('permissions')->default(json_encode([
-                'read' => false,
-                'create' => false,
-                'update' => false,
-                'delete' => false
-            ]));
+            $table->json('permissions')->nullable();
             $table->timestamps();
         });
     }

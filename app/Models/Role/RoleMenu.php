@@ -10,7 +10,11 @@ class RoleMenu extends Model
     protected $guarded = [];
     use HasFactory;
 
-      protected $casts = [
+    protected $attributes = [
+        'permissions' => '{"read":true,"create":false,"update":false,"delete":false}',
+    ];
+
+    protected $casts = [
         'is_default' => 'boolean',
         'order' => 'integer',
         'permissions' => 'array'

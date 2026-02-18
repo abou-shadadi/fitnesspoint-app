@@ -47,8 +47,8 @@ class PendingMemberImport extends Command
                     $import->branch_id,
                     $import->created_by_id,
                     $import->id,
-                    $import->member_subscription_id,
-                    $import->company_subscription_id
+                    $import->plan_id,
+                    $import->company_subscription_id,
                 );
 
                 // Import without throwing exceptions for individual row errors

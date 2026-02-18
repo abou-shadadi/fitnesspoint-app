@@ -29,7 +29,4 @@ class CompanySubscriptionMember extends Model
     {
         return $this->hasMany(\App\Models\Company\CompanySubscriptionMemberCheckIn::class);
     }
-
-    
-
 }

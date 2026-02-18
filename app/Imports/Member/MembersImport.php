@@ -31,14 +31,14 @@ class MembersImport implements ToCollection, WithHeadingRow
     ];
 
     public $branch, $user, $importId;
-    public $memberSubscriptionId, $companySubscriptionId;
+    public $planId, $companySubscriptionId;
     protected $failedRows = [];
     protected $successCount = 0;
     protected $failedCount = 0;
     protected $type;
     protected $importRecord;
 
-    public function __construct($branchId, $userId, $importId = null, $memberSubscriptionId = null, $companySubscriptionId = null)
+    public function __construct($branchId, $userId, $importId = null, $planId = null, $companySubscriptionId = null)
     {
         $this->branch = Branch::find($branchId);
         if (!$this->branch) {
@@ -51,7 +51,7 @@ class MembersImport implements ToCollection, WithHeadingRow
         }
 
         $this->importId = $importId;
-        $this->memberSubscriptionId = $memberSubscriptionId;
+        $this->planId = $planId;
         $this->companySubscriptionId = $companySubscriptionId;
 
         // Get import record and type
@@ -139,12 +139,10 @@ class MembersImport implements ToCollection, WithHeadingRow
 
                 Log::info("Successfully created member: {$member->reference}");
                 $this->successCount++;
-
             } catch (\Exception $e) {
                 DB::rollBack();
                 throw new \Exception($e->getMessage());
             }
-
         } catch (\Exception $e) {
             // Log the error to MemberImportLog
             $this->logFailedRowToDatabase($row, $rowNumber, $e->getMessage());
@@ -320,20 +318,26 @@ class MembersImport implements ToCollection, WithHeadingRow
     private function checkMemberExistence($row)
     {
         // Check by reference
-        if (isset($row['reference']) && !empty($row['reference']) &&
-            Member::where('reference', $row['reference'])->exists()) {
+        if (
+            isset($row['reference']) && !empty($row['reference']) &&
+            Member::where('reference', $row['reference'])->exists()
+        ) {
             throw new \Exception('Member with this reference already exists');
         }
 
         // Check by email
-        if (isset($row['email']) && !empty($row['email']) &&
-            Member::where('email', $row['email'])->exists()) {
+        if (
+            isset($row['email']) && !empty($row['email']) &&
+            Member::where('email', $row['email'])->exists()
+        ) {
             throw new \Exception('Member with this email already exists');
         }
 
         // Check by national ID
-        if (isset($row['national_id_number']) && !empty($row['national_id_number']) &&
-            Member::where('national_id_number', $row['national_id_number'])->exists()) {
+        if (
+            isset($row['national_id_number']) && !empty($row['national_id_number']) &&
+            Member::where('national_id_number', $row['national_id_number'])->exists()
+        ) {
             throw new \Exception('Member with this national ID number already exists');
         }
     }
@@ -451,24 +455,158 @@ class MembersImport implements ToCollection, WithHeadingRow
             ];
         }
 
-        // Add subscription references if provided
-        if ($this->memberSubscriptionId) {
-            $memberData['member_subscription_id'] = $this->memberSubscriptionId;
+        $member = Member::create($memberData);
+
+        // Handle individual member subscription
+        if ($this->type === 'individual') {
+            $this->handleMemberSubscription($member, $row);
+        }
+        // Handle corporate member subscription
+        else if ($this->type === 'corporate' && $this->companySubscriptionId) {
+            $this->handleCompanySubscription($member);
         }
 
-        if ($this->companySubscriptionId) {
-            $memberData['company_subscription_id'] = $this->companySubscriptionId;
+        return $member;
+    }
+
+    /**
+     * Handle individual member subscription creation
+     */
+    private function handleMemberSubscription($member, $row)
+    {
+        if (!$this->planId) {
+            Log::warning('No plan ID provided for individual member import', [
+                'member_id' => $member->id,
+                'import_id' => $this->importId
+            ]);
+            return;
         }
 
-        // Parse membership start date for individual members
-        if ($this->type === 'individual' && isset($row['membership_start_date'])) {
-            $startDate = $this->parseDate($row['membership_start_date']);
-            if ($startDate) {
-                $memberData['membership_start_date'] = $startDate;
+        // Get the plan with duration type
+        $plan = \App\Models\Plan\Plan::with('duration_type')->find($this->planId);
+
+        if (!$plan) {
+            throw new \Exception("Plan not found with ID: {$this->planId}");
+        }
+
+        // Parse start date (from row or use today)
+        $startDate = isset($row['membership_start_date'])
+            ? $this->parseDate($row['membership_start_date'])
+            : Carbon::now()->format('Y-m-d');
+
+        // Convert to Carbon instance for date manipulation
+        $startDateCarbon = Carbon::parse($startDate);
+
+        // Calculate end date based on plan duration and duration type
+        $endDate = $this->calculateEndDate($startDateCarbon, $plan->duration, $plan->duration_type);
+
+        // Create member subscription
+        try {
+            $memberSubscription = \App\Models\Member\MemberSubscription::create([
+                'member_id' => $member->id,
+                'plan_id' => $this->planId,
+                'start_date' => $startDateCarbon->format('Y-m-d H:i:s'),
+                'end_date' => $endDate ? $endDate->format('Y-m-d H:i:s') : null,
+                'notes' => 'Imported via member import',
+                'created_by_id' => $this->user->id,
+                'branch_id' => $this->branch->id,
+                'status' => 'pending', // Default status as pending
+            ]);
+
+            Log::info('Member subscription created successfully', [
+                'member_subscription_id' => $memberSubscription->id,
+                'member_id' => $member->id,
+                'plan_id' => $this->planId
+            ]);
+        } catch (\Exception $e) {
+            throw new \Exception("Failed to create member subscription: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Handle corporate member subscription (company subscription member)
+     */
+    private function handleCompanySubscription($member)
+    {
+        if (!$this->companySubscriptionId) {
+            Log::warning('No company subscription ID provided for corporate member import', [
+                'member_id' => $member->id,
+                'import_id' => $this->importId
+            ]);
+            return;
+        }
+
+        // Get the company subscription
+        $companySubscription = \App\Models\Company\CompanySubscription::find($this->companySubscriptionId);
+
+        if (!$companySubscription) {
+            throw new \Exception("Company subscription not found with ID: {$this->companySubscriptionId}");
+        }
+
+        // Check if member already exists in this company subscription
+        $existingMember = \App\Models\Company\CompanySubscriptionMember::where([
+            'company_subscription_id' => $this->companySubscriptionId,
+            'member_id' => $member->id
+        ])->first();
+
+        if ($existingMember) {
+            // If exists, just activate if inactive
+            if ($existingMember->status === 'inactive') {
+                $existingMember->update(['status' => 'active']);
+
+                Log::info('Existing company subscription member activated', [
+                    'company_subscription_member_id' => $existingMember->id,
+                    'member_id' => $member->id
+                ]);
+            } else {
+                Log::info('Member already exists in company subscription and is active', [
+                    'member_id' => $member->id,
+                    'company_subscription_id' => $this->companySubscriptionId
+                ]);
+            }
+        } else {
+            // Create new company subscription member
+            try {
+                $companySubscriptionMember = \App\Models\Company\CompanySubscriptionMember::create([
+                    'company_subscription_id' => $this->companySubscriptionId,
+                    'member_id' => $member->id,
+                    'status' => 'active', // Active by default for corporate members
+                ]);
+
+                Log::info('Company subscription member created successfully', [
+                    'company_subscription_member_id' => $companySubscriptionMember->id,
+                    'member_id' => $member->id,
+                    'company_subscription_id' => $this->companySubscriptionId
+                ]);
+            } catch (\Exception $e) {
+                throw new \Exception("Failed to create company subscription member: " . $e->getMessage());
             }
         }
+    }
 
-        return Member::create($memberData);
+    /**
+     * Calculate end date based on duration and duration type
+     */
+    private function calculateEndDate($startDate, $duration, $durationType)
+    {
+        if (!$duration || !$durationType) {
+            return null;
+        }
+
+        $unit = $durationType->unit; // 'days', 'weeks', 'months', 'years'
+
+        switch ($unit) {
+            case 'days':
+                return $startDate->copy()->addDays($duration);
+            case 'weeks':
+                return $startDate->copy()->addWeeks($duration);
+            case 'months':
+                return $startDate->copy()->addMonths($duration);
+            case 'years':
+                return $startDate->copy()->addYears($duration);
+            default:
+                return null;
+        }
     }
 
     private function parseNationalId($nationalId)

@@ -166,6 +166,7 @@ class CompanySubscriptionInvoiceController extends Controller
                 ->with([
                     'rate_type',
                     'tax_rate',
+                    'invoice',
                     'company_subscription.billing_type',
                     'company_subscription_invoice_recipients.company_administrator',
                     'company_subscription_invoice_bank_accounts.bank_account.bank', // Load bank account with bank
@@ -1412,5 +1413,5 @@ class CompanySubscriptionInvoiceController extends Controller
         return $symbols[$cleanCode] ?? $cleanCode;
     }
 
-   
+
 }

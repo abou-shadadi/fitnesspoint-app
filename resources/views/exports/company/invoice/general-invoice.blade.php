@@ -324,12 +324,12 @@
         <div class="billing-summary">
             <h3>BILLING SUMMARY</h3>
             <div class="summary-grid">
-                <div class="summary-item"><div class="summary-label">Plan Amount</div><div class="summary-value">{{ $invoice->company_subscription->currency->symbol }}{{ number_format($invoice->amount ?? 0, 2) }}</div></div>
-                <div class="summary-item"><div class="summary-label">Tax ({{ $taxRateDisplay }}%)</div><div class="summary-value">${{ number_format($invoice->tax_amount ?? 0, 2) }}</div></div>
+                <div class="summary-item"><div class="summary-label">Plan Amount</div><div class="summary-value">{{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }} {{ number_format($invoice->amount ?? 0, 2) }}</div></div>
+                <div class="summary-item"><div class="summary-label">Tax ({{ $taxRateDisplay }}%)</div><div class="summary-value">{{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }} {{ number_format($invoice->tax_amount ?? 0, 2) }}</div></div>
                 @if (($invoice->discount_amount ?? 0) > 0)
-                <div class="summary-item"><div class="summary-label">Discount</div><div class="summary-value">${{ number_format($invoice->discount_amount ?? 0, 2) }}</div></div>
+                <div class="summary-item"><div class="summary-label">Discount</div><div class="summary-value">{{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }} {{ number_format($invoice->discount_amount ?? 0, 2) }}</div></div>
                 @endif
-                <div class="summary-item"><div class="summary-label">Total Amount</div><div class="summary-value">${{ number_format($invoice->total_amount ?? 0, 2) }}</div></div>
+                <div class="summary-item"><div class="summary-label">Total Amount</div><div class="summary-value">{{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }} {{ number_format($invoice->total_amount ?? 0, 2) }}</div></div>
             </div>
         </div>
 
@@ -359,9 +359,9 @@
                         </td>
                         <td class="text-center">{{ $rateTypeName }}</td>
                         <td class="text-center">{{ $taxRateDisplay }}%</td>
-                        <td class="text-right">${{ number_format($invoice->amount ?? 0, 2) }}</td>
-                        <td class="text-right">${{ number_format($invoice->tax_amount ?? 0, 2) }}</td>
-                        <td class="text-right">${{ number_format(($invoice->amount ?? 0) + ($invoice->tax_amount ?? 0), 2) }}</td>
+                        <td class="text-right">{{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }} {{ number_format($invoice->amount ?? 0, 2) }}</td>
+                        <td class="text-right">{{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }} {{ number_format($invoice->tax_amount ?? 0, 2) }}</td>
+                        <td class="text-right">{{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }} {{ number_format(($invoice->amount ?? 0) + ($invoice->tax_amount ?? 0), 2) }}</td>
                     </tr>
                 </tbody>
             </table>
@@ -370,15 +370,15 @@
         <!-- Amounts -->
         <div class="amounts-section">
             <table class="amounts-table">
-                <tr><td class="label">Subtotal:</td><td class="text-right">${{ number_format($invoice->amount ?? 0, 2) }}</td></tr>
-                <tr><td class="label">Tax ({{ $taxRateDisplay }}%):</td><td class="text-right">${{ number_format($invoice->tax_amount ?? 0, 2) }}</td></tr>
+                <tr><td class="label">Subtotal:</td><td class="text-right">{{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }} {{ number_format($invoice->amount ?? 0, 2) }}</td></tr>
+                <tr><td class="label">Tax ({{ $taxRateDisplay }}%):</td><td class="text-right">{{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }} {{ number_format($invoice->tax_amount ?? 0, 2) }}</td></tr>
                 @if (($invoice->discount_amount ?? 0) > 0)
                 <tr><td class="label">Discount:</td><td class="text-right">-${{ number_format($invoice->discount_amount ?? 0, 2) }}</td></tr>
                 @endif
-                <tr class="total-row"><td>TOTAL DUE:</td><td class="text-right">${{ number_format($invoice->total_amount ?? 0, 2) }}</td></tr>
+                <tr class="total-row"><td>TOTAL DUE:</td><td class="text-right">{{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }} {{ number_format($invoice->total_amount ?? 0, 2) }}</td></tr>
                 @if ($total_paid > 0)
-                <tr><td class="label">Amount Paid:</td><td class="text-right">${{ number_format($total_paid, 2) }}</td></tr>
-                <tr class="total-row"><td>BALANCE DUE:</td><td class="text-right">${{ number_format($balance_due, 2) }}</td></tr>
+                <tr><td class="label">Amount Paid:</td><td class="text-right">{{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }} {{ number_format($total_paid, 2) }}</td></tr>
+                <tr class="total-row"><td>BALANCE DUE:</td><td class="text-right">{{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }} {{ number_format($balance_due, 2) }}</td></tr>
                 @endif
             </table>
         </div>
@@ -415,7 +415,7 @@
                         <td>{{ $ref }}</td>
                         <td>{{ $safeFormat($date, 'M d, Y', 'N/A') }}</td>
                         <td>{{ $method }}</td>
-                        <td class="text-right">${{ number_format($amt, 2) }}</td>
+                        <td class="text-right">{{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }} {{ number_format($amt, 2) }}</td>
                         <td>{{ ucfirst($status) }}</td>
                     </tr>
                 @endforeach

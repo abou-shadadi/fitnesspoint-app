@@ -30,9 +30,7 @@
             color: #2c3e50;
             margin-bottom: 5px;
         }
-        .invoice-title {
-            text-align: right;
-        }
+        .invoice-title { text-align: right; }
         .invoice-title h2 {
             font-size: 28px;
             color: #e74c3c;
@@ -109,18 +107,15 @@
             width: 100%;
             border-collapse: collapse;
         }
+        .items-table th, .items-table td {
+            padding: 12px 15px;
+            border: 1px solid #ddd;
+        }
         .items-table th {
             background-color: #f8f9fa;
-            padding: 12px 15px;
             text-align: left;
-            border: 1px solid #ddd;
             font-weight: bold;
             color: #2c3e50;
-        }
-        .items-table td {
-            padding: 12px 15px;
-            border: 1px solid #ddd;
-            vertical-align: top;
         }
         .text-right { text-align: right; }
         .text-center { text-align: center; }
@@ -134,10 +129,7 @@
             padding: 10px 15px;
             border: 1px solid #ddd;
         }
-        .amounts-table .label {
-            background-color: #f8f9fa;
-            font-weight: bold;
-        }
+        .amounts-table .label { background-color: #f8f9fa; font-weight: bold; }
         .total-row {
             background-color: #2c3e50;
             color: white;
@@ -152,10 +144,10 @@
             font-weight: bold;
             font-size: 16px;
         }
-        .status-paid        { background-color:#d4edda; color:#155724; border:1px solid #c3e6cb; }
-        .status-pending      { background-color:#fff3cd; color:#856404; border:1px solid #ffeaa7; }
-        .status-overdue      { background-color:#f8d7da; color:#721c24; border:1px solid #f5c6cb; }
-        .status-partially-paid { background-color:#cce5ff; color:#004085; border:1px solid #b8daff; }
+        .status-paid { background:#d4edda; color:#155724; border:1px solid #c3e6cb; }
+        .status-pending { background:#fff3cd; color:#856404; border:1px solid #ffeaa7; }
+        .status-overdue { background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; }
+        .status-partially-paid { background:#cce5ff; color:#004085; border:1px solid #b8daff; }
         .checkin-summary {
             background-color: #f0f8ff;
             padding: 15px;
@@ -186,42 +178,66 @@
             line-height: 1.6;
         }
         .mb-10 { margin-bottom: 10px; }
-        .mb-20 { margin-bottom: 20px; }
         .mt-20 { margin-top: 20px; }
-        .text-uppercase { text-transform: uppercase; }
-        .font-bold { font-weight: bold; }
     </style>
 </head>
 <body>
     <div class="invoice-container">
 
         @php
-            // Safe tax rate
+            // ── Safe helpers ────────────────────────────────────────────────
+            $safeFormat = function ($dateValue, $format = 'M d, Y', $default = 'N/A') {
+                if (empty($dateValue)) return $default;
+                try {
+                    return \Carbon\Carbon::parse($dateValue)->format($format);
+                } catch (\Exception $e) {
+                    return $default;
+                }
+            };
+
+            $safeDaysBetween = function ($start, $end) {
+                if (empty($start) || empty($end)) return '30';
+                try {
+                    $s = \Carbon\Carbon::parse($start);
+                    $e = \Carbon\Carbon::parse($end);
+                    return $e->diffInDays($s);
+                } catch (\Exception $e) {
+                    return '30';
+                }
+            };
+
+            // Tax rate display
             $taxRateDisplay = '0';
             if (isset($invoice->tax_rate)) {
-                $rate = is_object($invoice->tax_rate) ? ($invoice->tax_rate->rate ?? null) : ($invoice->tax_rate['rate'] ?? null);
-                $taxRateDisplay = is_numeric($rate) || is_string($rate) ? $rate : '0';
+                $rate = is_object($invoice->tax_rate)
+                    ? ($invoice->tax_rate->rate ?? null)
+                    : ($invoice->tax_rate['rate'] ?? null);
+                if (is_numeric($rate) || (is_string($rate) && trim($rate) !== '')) {
+                    $taxRateDisplay = $rate;
+                }
             }
 
-            // Safe rate type name
+            // Rate type name
             $rateTypeName = 'N/A';
             if (isset($invoice->rate_type)) {
-                $rateTypeName = is_object($invoice->rate_type) ? ($invoice->rate_type->name ?? 'N/A') : ($invoice->rate_type['name'] ?? 'N/A');
+                $rateTypeName = is_object($invoice->rate_type)
+                    ? ($invoice->rate_type->name ?? 'N/A')
+                    : ($invoice->rate_type['name'] ?? 'N/A');
             }
 
-            // Safe total paid & balance
+            // Payments summary
             $total_paid = 0;
-            $balance_due = $invoice->total_amount ?? 0;
+            $balance_due = (float) ($invoice->total_amount ?? 0);
 
             if (!empty($invoice->transactions) && is_iterable($invoice->transactions)) {
                 foreach ($invoice->transactions as $t) {
                     $status = is_object($t) ? ($t->status ?? '') : ($t['status'] ?? '');
-                    if ($status === 'completed') {
-                        $amount = is_object($t) ? ($t->amount_paid ?? 0) : ($t['amount_paid'] ?? 0);
-                        $total_paid += (float) $amount;
+                    if (strtolower($status) === 'completed') {
+                        $amt = is_object($t) ? ($t->amount_paid ?? 0) : ($t['amount_paid'] ?? 0);
+                        $total_paid += (float) $amt;
                     }
                 }
-                $balance_due = ($invoice->total_amount ?? 0) - $total_paid;
+                $balance_due = $balance_due - $total_paid;
             }
         @endphp
 
@@ -235,18 +251,19 @@
             <div class="invoice-title">
                 <h2>INVOICE</h2>
                 <p class="mb-10">Reference: <strong>{{ $invoice->reference ?? 'N/A' }}</strong></p>
-                <p>Date: {{ $invoice->invoice_date ? \Carbon\Carbon::parse($invoice->invoice_date)->format('F d, Y') : 'N/A' }}</p>
-                <p>Due Date: {{ $invoice->due_date ? \Carbon\Carbon::parse($invoice->due_date)->format('F d, Y') : 'N/A' }}</p>
+                <p>Date: {{ $safeFormat($invoice->invoice_date ?? null) }}</p>
+                <p>Due Date: {{ $safeFormat($invoice->due_date ?? null) }}</p>
             </div>
         </div>
 
-        <!-- Payment Status -->
-        <div class="payment-status status-{{ str_replace('_', '-', $invoice->status ?? 'pending') }}">
+        <!-- Status -->
+        <div class="payment-status status-{{ str_replace('_', '-', strtolower($invoice->status ?? 'pending')) }}">
             INVOICE STATUS: {{ strtoupper(str_replace('_', ' ', $invoice->status ?? 'pending')) }}
         </div>
 
-        <!-- Invoice Info Section -->
+        <!-- Info section -->
         <div class="invoice-info-section">
+
             <div class="info-box">
                 <h3>MEMBER INFORMATION</h3>
                 <div class="info-details">
@@ -266,15 +283,9 @@
                 <div class="info-details">
                     <div class="info-row"><span class="info-label">Plan:</span> <span>{{ $subscription->plan->name ?? 'N/A' }}</span></div>
                     <div class="info-row"><span class="info-label">Subscription ID:</span> <span>#{{ $subscription->id ?? 'N/A' }}</span></div>
-                    <div class="info-row">
-                        <span class="info-label">Start Date:</span>
-                        <span>{{ $subscription->start_date ? \Carbon\Carbon::parse($subscription->start_date)->format('M d, Y') : 'N/A' }}</span>
-                    </div>
+                    <div class="info-row"><span class="info-label">Start Date:</span> <span>{{ $safeFormat($subscription->start_date ?? null) }}</span></div>
                     @if (!empty($subscription->end_date))
-                    <div class="info-row">
-                        <span class="info-label">End Date:</span>
-                        <span>{{ \Carbon\Carbon::parse($subscription->end_date)->format('M d, Y') }}</span>
-                    </div>
+                    <div class="info-row"><span class="info-label">End Date:</span> <span>{{ $safeFormat($subscription->end_date) }}</span></div>
                     @endif
                     <div class="info-row"><span class="info-label">Status:</span> <span>{{ ucfirst($subscription->status ?? 'N/A') }}</span></div>
                 </div>
@@ -284,65 +295,45 @@
                 <h3>INVOICE DETAILS</h3>
                 <div class="info-details">
                     <div class="info-row"><span class="info-label">Invoice #:</span> <span>{{ $invoice->reference ?? 'N/A' }}</span></div>
-                    <div class="info-row">
-                        <span class="info-label">Invoice Date:</span>
-                        <span>{{ $invoice->invoice_date ? \Carbon\Carbon::parse($invoice->invoice_date)->format('M d, Y') : 'N/A' }}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Due Date:</span>
-                        <span>{{ $invoice->due_date ? \Carbon\Carbon::parse($invoice->due_date)->format('M d, Y') : 'N/A' }}</span>
-                    </div>
+                    <div class="info-row"><span class="info-label">Invoice Date:</span> <span>{{ $safeFormat($invoice->invoice_date ?? null) }}</span></div>
+                    <div class="info-row"><span class="info-label">Due Date:</span> <span>{{ $safeFormat($invoice->due_date ?? null) }}</span></div>
                     <div class="info-row">
                         <span class="info-label">Period:</span>
                         <span>
-                            {{ $invoice->from_date ? \Carbon\Carbon::parse($invoice->from_date)->format('M d, Y') : 'N/A' }}
+                            {{ $safeFormat($invoice->from_date ?? null) }}
                             to
-                            {{ $invoice->to_date ? \Carbon\Carbon::parse($invoice->to_date)->format('M d, Y') : 'N/A' }}
+                            {{ $safeFormat($invoice->to_date ?? null) }}
                         </span>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Check-in Summary -->
+        <!-- Check-ins -->
         @if (($invoice->total_check_ins ?? 0) > 0)
         <div class="checkin-summary">
             <h4>CHECK-IN ACTIVITY</h4>
             <p>Total Check-ins during period: <strong>{{ $invoice->total_check_ins }}</strong></p>
-            <p>Check-in period:
-                {{ $invoice->from_date ? \Carbon\Carbon::parse($invoice->from_date)->format('M d, Y') : 'N/A' }}
-                to
-                {{ $invoice->to_date ? \Carbon\Carbon::parse($invoice->to_date)->format('M d, Y') : 'N/A' }}
-            </p>
+            <p>Check-in period: {{ $safeFormat($invoice->from_date ?? null) }} to {{ $safeFormat($invoice->to_date ?? null) }}</p>
         </div>
         @endif
+
+        <!-- Billing summary, items table, amounts, transactions, footer – unchanged except date parts -->
 
         <!-- Billing Summary -->
         <div class="billing-summary">
             <h3>BILLING SUMMARY</h3>
             <div class="summary-grid">
-                <div class="summary-item">
-                    <div class="summary-label">Plan Amount</div>
-                    <div class="summary-value">${{ number_format($invoice->amount ?? 0, 2) }}</div>
-                </div>
-                <div class="summary-item">
-                    <div class="summary-label">Tax ({{ $taxRateDisplay }}%)</div>
-                    <div class="summary-value">${{ number_format($invoice->tax_amount ?? 0, 2) }}</div>
-                </div>
+                <div class="summary-item"><div class="summary-label">Plan Amount</div><div class="summary-value">${{ number_format($invoice->amount ?? 0, 2) }}</div></div>
+                <div class="summary-item"><div class="summary-label">Tax ({{ $taxRateDisplay }}%)</div><div class="summary-value">${{ number_format($invoice->tax_amount ?? 0, 2) }}</div></div>
                 @if (($invoice->discount_amount ?? 0) > 0)
-                <div class="summary-item">
-                    <div class="summary-label">Discount</div>
-                    <div class="summary-value">${{ number_format($invoice->discount_amount ?? 0, 2) }}</div>
-                </div>
+                <div class="summary-item"><div class="summary-label">Discount</div><div class="summary-value">${{ number_format($invoice->discount_amount ?? 0, 2) }}</div></div>
                 @endif
-                <div class="summary-item">
-                    <div class="summary-label">Total Amount</div>
-                    <div class="summary-value">${{ number_format($invoice->total_amount ?? 0, 2) }}</div>
-                </div>
+                <div class="summary-item"><div class="summary-label">Total Amount</div><div class="summary-value">${{ number_format($invoice->total_amount ?? 0, 2) }}</div></div>
             </div>
         </div>
 
-        <!-- Invoice Items Table -->
+        <!-- Invoice Items -->
         <div class="invoice-items">
             <h3>INVOICE DETAILS</h3>
             <table class="items-table">
@@ -361,8 +352,7 @@
                         <td>
                             <strong>Member Subscription - {{ $subscription->plan->name ?? 'Plan' }}</strong><br>
                             {{ $subscription->plan->description ?? 'Subscription service' }}<br>
-                            Period: {{ $invoice->from_date ? \Carbon\Carbon::parse($invoice->from_date)->format('M d, Y') : 'N/A' }}
-                            to {{ $invoice->to_date ? \Carbon\Carbon::parse($invoice->to_date)->format('M d, Y') : 'N/A' }}
+                            Period: {{ $safeFormat($invoice->from_date ?? null) }} to {{ $safeFormat($invoice->to_date ?? null) }}
                             @if (($invoice->total_check_ins ?? 0) > 0)
                                 <br>Total Check-ins: {{ $invoice->total_check_ins }}
                             @endif
@@ -377,41 +367,23 @@
             </table>
         </div>
 
-        <!-- Amounts Section -->
+        <!-- Amounts -->
         <div class="amounts-section">
             <table class="amounts-table">
-                <tr>
-                    <td class="label">Subtotal:</td>
-                    <td class="text-right">${{ number_format($invoice->amount ?? 0, 2) }}</td>
-                </tr>
-                <tr>
-                    <td class="label">Tax ({{ $taxRateDisplay }}%):</td>
-                    <td class="text-right">${{ number_format($invoice->tax_amount ?? 0, 2) }}</td>
-                </tr>
+                <tr><td class="label">Subtotal:</td><td class="text-right">${{ number_format($invoice->amount ?? 0, 2) }}</td></tr>
+                <tr><td class="label">Tax ({{ $taxRateDisplay }}%):</td><td class="text-right">${{ number_format($invoice->tax_amount ?? 0, 2) }}</td></tr>
                 @if (($invoice->discount_amount ?? 0) > 0)
-                <tr>
-                    <td class="label">Discount:</td>
-                    <td class="text-right">-${{ number_format($invoice->discount_amount ?? 0, 2) }}</td>
-                </tr>
+                <tr><td class="label">Discount:</td><td class="text-right">-${{ number_format($invoice->discount_amount ?? 0, 2) }}</td></tr>
                 @endif
-                <tr class="total-row">
-                    <td>TOTAL DUE:</td>
-                    <td class="text-right">${{ number_format($invoice->total_amount ?? 0, 2) }}</td>
-                </tr>
+                <tr class="total-row"><td>TOTAL DUE:</td><td class="text-right">${{ number_format($invoice->total_amount ?? 0, 2) }}</td></tr>
                 @if ($total_paid > 0)
-                <tr>
-                    <td class="label">Amount Paid:</td>
-                    <td class="text-right">${{ number_format($total_paid, 2) }}</td>
-                </tr>
-                <tr class="total-row">
-                    <td>BALANCE DUE:</td>
-                    <td class="text-right">${{ number_format($balance_due, 2) }}</td>
-                </tr>
+                <tr><td class="label">Amount Paid:</td><td class="text-right">${{ number_format($total_paid, 2) }}</td></tr>
+                <tr class="total-row"><td>BALANCE DUE:</td><td class="text-right">${{ number_format($balance_due, 2) }}</td></tr>
                 @endif
             </table>
         </div>
 
-        <!-- Payment Transactions -->
+        <!-- Transactions -->
         @if (!empty($invoice->transactions) && is_iterable($invoice->transactions) && count($invoice->transactions) > 0)
         <div class="invoice-items">
             <h3>PAYMENT TRANSACTIONS</h3>
@@ -426,28 +398,27 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach ($invoice->transactions as $transaction)
+                @foreach ($invoice->transactions as $t)
                     @php
-                        $t = $transaction;
-                        $ref    = is_object($t) ? ($t->reference    ?? 'N/A') : ($t['reference']    ?? 'N/A');
-                        $date   = is_object($t) ? ($t->date         ?? null)  : ($t['date']         ?? null);
-                        $method = is_object($t) ? (
-                                    is_object($t->payment_method) ? ($t->payment_method->name ?? 'N/A') :
-                                    (is_array($t->payment_method) ? ($t->payment_method['name'] ?? 'N/A') : 'N/A')
-                                  ) : (
-                                    is_array($t['payment_method'] ?? []) ? ($t['payment_method']['name'] ?? 'N/A') : 'N/A'
-                                  );
+                        $ref    = is_object($t) ? ($t->reference ?? 'N/A') : ($t['reference'] ?? 'N/A');
+                        $date   = is_object($t) ? ($t->date ?? null) : ($t['date'] ?? null);
+                        $method = 'N/A';
+                        if (is_object($t) && isset($t->payment_method)) {
+                            $method = is_object($t->payment_method) ? ($t->payment_method->name ?? 'N/A') : ($t->payment_method['name'] ?? 'N/A');
+                        } elseif (is_array($t) && isset($t['payment_method'])) {
+                            $method = is_array($t['payment_method']) ? ($t['payment_method']['name'] ?? 'N/A') : 'N/A';
+                        }
                         $amt    = (float) (is_object($t) ? ($t->amount_paid ?? 0) : ($t['amount_paid'] ?? 0));
                         $status = is_object($t) ? ($t->status ?? 'N/A') : ($t['status'] ?? 'N/A');
                     @endphp
                     <tr>
                         <td>{{ $ref }}</td>
-                        <td>{{ $date ? \Carbon\Carbon::parse($date)->format('M d, Y') : 'N/A' }}</td>
+                        <td>{{ $safeFormat($date, 'M d, Y', 'N/A') }}</td>
                         <td>{{ $method }}</td>
                         <td class="text-right">${{ number_format($amt, 2) }}</td>
                         <td>{{ ucfirst($status) }}</td>
                     </tr>
-                    @endforeach
+                @endforeach
                 </tbody>
             </table>
         </div>
@@ -471,17 +442,7 @@
 
             <div class="terms-conditions mt-20">
                 <p><strong>Terms & Conditions:</strong></p>
-                <p>1. Payment is due within
-                    @php
-                        try {
-                            $invDate = $invoice->invoice_date ? \Carbon\Carbon::parse($invoice->invoice_date) : null;
-                            $dueDate = $invoice->due_date   ? \Carbon\Carbon::parse($invoice->due_date)   : null;
-                            echo $invDate && $dueDate ? $dueDate->diffInDays($invDate) : '30';
-                        } catch (\Exception $e) {
-                            echo '30';
-                        }
-                    @endphp
-                    days of invoice date.</p>
+                <p>1. Payment is due within {{ $safeDaysBetween($invoice->invoice_date ?? null, $invoice->due_date ?? null) }} days of invoice date.</p>
                 <p>2. Late payments may result in service suspension.</p>
                 <p>3. All amounts are in USD.</p>
             </div>

@@ -311,7 +311,7 @@
 
                     // If it's a string, try to parse it
                     if (is_string($date)) {
-                        return \Carbon\Carbon::parse($date)->format($format);
+                       return $date;
                     }
 
                     // If it's another type, return as string

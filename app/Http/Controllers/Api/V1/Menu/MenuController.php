@@ -261,7 +261,7 @@ class MenuController extends Controller
      *   )
      * )
      */
-    public function update(Request $request,$menuId)
+    public function update(Request $request, $menuId)
     {
         $menu = Menu::find($menuId);
 
@@ -275,7 +275,7 @@ class MenuController extends Controller
         $validator = Validator::make($request->all(), [
             'name' => 'string|max:255',
             'description' => 'nullable|string',
-            'icon' => 'nullable|string|max:255',
+            'icon' => 'nullable|string',
             'menu_group_id' => 'exists:menu_groups,id',
             'parent_id' => 'nullable|exists:menus,id',
         ]);

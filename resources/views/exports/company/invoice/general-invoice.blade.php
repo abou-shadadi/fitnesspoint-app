@@ -324,7 +324,7 @@
         <div class="billing-summary">
             <h3>BILLING SUMMARY</h3>
             <div class="summary-grid">
-                <div class="summary-item"><div class="summary-label">Plan Amount</div><div class="summary-value">${{ number_format($invoice->amount ?? 0, 2) }}</div></div>
+                <div class="summary-item"><div class="summary-label">Plan Amount</div><div class="summary-value">{{ $invoice->currency->symbol }}{{ number_format($invoice->amount ?? 0, 2) }}</div></div>
                 <div class="summary-item"><div class="summary-label">Tax ({{ $taxRateDisplay }}%)</div><div class="summary-value">${{ number_format($invoice->tax_amount ?? 0, 2) }}</div></div>
                 @if (($invoice->discount_amount ?? 0) > 0)
                 <div class="summary-item"><div class="summary-label">Discount</div><div class="summary-value">${{ number_format($invoice->discount_amount ?? 0, 2) }}</div></div>

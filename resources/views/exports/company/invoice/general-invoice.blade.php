@@ -561,38 +561,38 @@
             <table class="amounts-table" style="width: 220px; font-size: 9px;">
                 <tr>
                     <td class="label" style="padding: 4px 6px; font-size: 9px;">Subtotal:</td>
-                    <td class="text-right" style="padding: 4px 6px; font-size: 9px;">
+                    <td class="text-right" style="padding: 5px 6px; font-color: white; font-weight: bold;">
                         {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}
                         {{ number_format($invoice->amount ?? 0, 2) }}</td>
                 </tr>
                 <tr>
-                    <td class="label" style="padding: 4px 6px; font-size: 9px;">Tax ({{ $taxRateDisplay }}%):</td>
-                    <td class="text-right" style="padding: 4px 6px; font-size: 9px;">
+                    <td class="label" style="padding: 5px 6px; font-color: white; font-weight: bold;">Tax ({{ $taxRateDisplay }}%):</td>
+                    <td class="text-right" style="padding: 5px 6px; font-color: white; font-weight: bold;">
                         {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}
                         {{ number_format($invoice->tax_amount ?? 0, 2) }}</td>
                 </tr>
                 @if (($invoice->discount_amount ?? 0) > 0)
                     <tr>
-                        <td class="label" style="padding: 4px 6px; font-size: 9px;">Discount:</td>
-                        <td class="text-right" style="padding: 4px 6px; font-size: 9px;">-{{ number_format($invoice->discount_amount ?? 0, 2) }}</td>
+                        <td class="label" style="padding: 5px 6px; font-color: white; font-weight: bold;">Discount:</td>
+                        <td class="text-right" style="padding: 5px 6px; font-color: white; font-weight: bold;">-{{ number_format($invoice->discount_amount ?? 0, 2) }}</td>
                     </tr>
                 @endif
                 <tr class="total-row" style="font-size: 10px;">
                     <td style="padding: 5px 6px;">TOTAL DUE:</td>
-                    <td class="text-right" style="padding: 5px 6px;">
+                    <td class="text-right" style="padding: 5px 6px; font-color: white; font-weight: bold;">
                         {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}
                         {{ number_format($invoice->total_amount ?? 0, 2) }}</td>
                 </tr>
                 @if ($total_paid > 0)
                     <tr>
-                        <td class="label" style="padding: 4px 6px; font-size: 9px;">Amount Paid:</td>
-                        <td class="text-right" style="padding: 4px 6px; font-size: 9px;">
+                        <td class="label" style="padding: 5px 6px; font-color: white; font-weight: bold;">Amount Paid:</td>
+                        <td class="text-right" style="padding: 5px 6px; font-color: white; font-weight: bold;">
                             {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}
                             {{ number_format($total_paid, 2) }}</td>
                     </tr>
                     <tr class="total-row" style="font-size: 10px;">
                         <td style="padding: 5px 6px;">BALANCE DUE:</td>
-                        <td class="text-right" style="padding: 5px 6px;">
+                        <td class="text-right" style="padding: 5px 6px; font-color: white; font-weight: bold;">
                             {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}
                             {{ number_format($balance_due, 2) }}</td>
                     </tr>

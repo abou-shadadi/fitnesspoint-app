@@ -350,65 +350,88 @@
         </div>
 
         <!-- Info section -->
-        <div class="invoice-info-section">
-
-            <div class="info-box">
-                <h3>MEMBER INFORMATION</h3>
-                <div class="info-details">
-                    <div class="info-row"><span class="info-label">Member:</span>
-                        <span>{{ $member->name ?? 'N/A' }}</span></div>
-                    @if (!empty($member->email))
-                        <div class="info-row"><span class="info-label">Email:</span> <span>{{ $member->email }}</span>
+        <div class="invoice-info-section" style="width: 100%;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <!-- MEMBER INFORMATION -->
+                    <td style="padding: 8px; vertical-align: top; width: 33.33%;">
+                        <div class="info-box" style="margin: 0;">
+                            <h3>MEMBER INFORMATION</h3>
+                            <div class="info-details">
+                                <div class="info-row"><span class="info-label">Member:</span>
+                                    <span>{{ $member->name ?? 'N/A' }}</span>
+                                </div>
+                                @if (!empty($member->email))
+                                    <div class="info-row"><span class="info-label">Email:</span>
+                                        <span>{{ $member->email }}</span>
+                                    </div>
+                                @endif
+                                @if (!empty($member->phone))
+                                    <div class="info-row"><span class="info-label">Phone:</span>
+                                        <span>{{ $member->phone }}</span>
+                                    </div>
+                                @endif
+                                <div class="info-row"><span class="info-label">Member ID:</span>
+                                    <span>#{{ $member->id ?? 'N/A' }}</span>
+                                </div>
+                            </div>
                         </div>
-                    @endif
-                    @if (!empty($member->phone))
-                        <div class="info-row"><span class="info-label">Phone:</span> <span>{{ $member->phone }}</span>
+                    </td>
+
+                    <!-- SUBSCRIPTION DETAILS -->
+                    <td style="padding: 8px; vertical-align: top; width: 33.33%;">
+                        <div class="info-box" style="margin: 0;">
+                            <h3>SUBSCRIPTION DETAILS</h3>
+                            <div class="info-details">
+                                <div class="info-row"><span class="info-label">Plan:</span>
+                                    <span>{{ $subscription->plan->name ?? 'N/A' }}</span>
+                                </div>
+                                <div class="info-row"><span class="info-label">Subscription ID:</span>
+                                    <span>#{{ $subscription->id ?? 'N/A' }}</span>
+                                </div>
+                                <div class="info-row"><span class="info-label">Start Date:</span>
+                                    <span>{{ $safeFormat($subscription->start_date ?? null) }}</span>
+                                </div>
+                                @if (!empty($subscription->end_date))
+                                    <div class="info-row"><span class="info-label">End Date:</span>
+                                        <span>{{ $safeFormat($subscription->end_date) }}</span>
+                                    </div>
+                                @endif
+                                <div class="info-row"><span class="info-label">Status:</span>
+                                    <span>{{ ucfirst($subscription->status ?? 'N/A') }}</span>
+                                </div>
+                            </div>
                         </div>
-                    @endif
-                    <div class="info-row"><span class="info-label">Member ID:</span>
-                        <span>#{{ $member->id ?? 'N/A' }}</span></div>
-                </div>
-            </div>
+                    </td>
 
-            <div class="info-box">
-                <h3>SUBSCRIPTION DETAILS</h3>
-                <div class="info-details">
-                    <div class="info-row"><span class="info-label">Plan:</span>
-                        <span>{{ $subscription->plan->name ?? 'N/A' }}</span></div>
-                    <div class="info-row"><span class="info-label">Subscription ID:</span>
-                        <span>#{{ $subscription->id ?? 'N/A' }}</span></div>
-                    <div class="info-row"><span class="info-label">Start Date:</span>
-                        <span>{{ $safeFormat($subscription->start_date ?? null) }}</span></div>
-                    @if (!empty($subscription->end_date))
-                        <div class="info-row"><span class="info-label">End Date:</span>
-                            <span>{{ $safeFormat($subscription->end_date) }}</span></div>
-                    @endif
-                    <div class="info-row"><span class="info-label">Status:</span>
-                        <span>{{ ucfirst($subscription->status ?? 'N/A') }}</span></div>
-                </div>
-            </div>
-
-            <div class="info-box">
-                <h3>INVOICE DETAILS</h3>
-                <div class="info-details">
-                    <div class="info-row"><span class="info-label">Invoice #:</span>
-                        <span>{{ $invoice->reference ?? 'N/A' }}</span></div>
-                    <div class="info-row"><span class="info-label">Invoice Date:</span>
-                        <span>{{ $safeFormat($invoice->invoice_date ?? null) }}</span></div>
-                    <div class="info-row"><span class="info-label">Due Date:</span>
-                        <span>{{ $safeFormat($invoice->due_date ?? null) }}</span></div>
-                    <div class="info-row">
-                        <span class="info-label">Period:</span>
-                        <span>
-                            {{ $safeFormat($invoice->from_date ?? null) }}
-                            to
-                            {{ $safeFormat($invoice->to_date ?? null) }}
-                        </span>
-                    </div>
-                </div>
-            </div>
+                    <!-- INVOICE DETAILS -->
+                    <td style="padding: 8px; vertical-align: top; width: 33.33%;">
+                        <div class="info-box" style="margin: 0;">
+                            <h3>INVOICE DETAILS</h3>
+                            <div class="info-details">
+                                <div class="info-row"><span class="info-label">Invoice #:</span>
+                                    <span>{{ $invoice->reference ?? 'N/A' }}</span>
+                                </div>
+                                <div class="info-row"><span class="info-label">Invoice Date:</span>
+                                    <span>{{ $safeFormat($invoice->invoice_date ?? null) }}</span>
+                                </div>
+                                <div class="info-row"><span class="info-label">Due Date:</span>
+                                    <span>{{ $safeFormat($invoice->due_date ?? null) }}</span>
+                                </div>
+                                <div class="info-row">
+                                    <span class="info-label">Period:</span>
+                                    <span>
+                                        {{ $safeFormat($invoice->from_date ?? null) }}
+                                        to
+                                        {{ $safeFormat($invoice->to_date ?? null) }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            </table>
         </div>
-
         <!-- Check-ins -->
         @if (($invoice->total_check_ins ?? 0) > 0)
             <div class="checkin-summary">
@@ -422,7 +445,7 @@
         <!-- Billing summary, items table, amounts, transactions, footer – unchanged except date parts -->
 
         <!-- Billing Summary -->
-        <<div class="billing-summary">
+        <div class="billing-summary">
             <h3>BILLING SUMMARY</h3>
             <table style="width: 100%; border-collapse: collapse; border: 1px solid #ddd;">
                 <tr>
@@ -454,171 +477,171 @@
                         {{ number_format($invoice->total_amount ?? 0, 2) }}</td>
                 </tr>
             </table>
-    </div>
+        </div>
 
-    <!-- Invoice Items -->
-    <div class="invoice-items">
-        <h3>INVOICE DETAILS</h3>
-        <table class="items-table">
-            <thead>
-                <tr>
-                    <th>Description</th>
-                    <th class="text-center">Rate Type</th>
-                    <th class="text-center">Tax Rate</th>
-                    <th class="text-right">Amount</th>
-                    <th class="text-right">Tax</th>
-                    <th class="text-right">Subtotal</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>
-                        <strong>Member Subscription - {{ $subscription->plan->name ?? 'Plan' }}</strong><br>
-                        {{ $subscription->plan->description ?? 'Subscription service' }}<br>
-                        Period: {{ $safeFormat($invoice->from_date ?? null) }} to
-                        {{ $safeFormat($invoice->to_date ?? null) }}
-                        @if (($invoice->total_check_ins ?? 0) > 0)
-                            <br>Total Check-ins: {{ $invoice->total_check_ins }}
-                        @endif
-                    </td>
-                    <td class="text-center">{{ $rateTypeName }}</td>
-                    <td class="text-center">{{ $taxRateDisplay }}%</td>
-                    <td class="text-right">
-                        {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}
-                        {{ number_format($invoice->amount ?? 0, 2) }}</td>
-                    <td class="text-right">
-                        {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}
-                        {{ number_format($invoice->tax_amount ?? 0, 2) }}</td>
-                    <td class="text-right">
-                        {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}
-                        {{ number_format(($invoice->amount ?? 0) + ($invoice->tax_amount ?? 0), 2) }}</td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-
-    <!-- Amounts -->
-    <div class="amounts-section">
-        <table class="amounts-table">
-            <tr>
-                <td class="label">Subtotal:</td>
-                <td class="text-right">
-                    {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}
-                    {{ number_format($invoice->amount ?? 0, 2) }}</td>
-            </tr>
-            <tr>
-                <td class="label">Tax ({{ $taxRateDisplay }}%):</td>
-                <td class="text-right">
-                    {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}
-                    {{ number_format($invoice->tax_amount ?? 0, 2) }}</td>
-            </tr>
-            @if (($invoice->discount_amount ?? 0) > 0)
-                <tr>
-                    <td class="label">Discount:</td>
-                    <td class="text-right">-${{ number_format($invoice->discount_amount ?? 0, 2) }}</td>
-                </tr>
-            @endif
-            <tr class="total-row">
-                <td>TOTAL DUE:</td>
-                <td class="text-right">
-                    {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}
-                    {{ number_format($invoice->total_amount ?? 0, 2) }}</td>
-            </tr>
-            @if ($total_paid > 0)
-                <tr>
-                    <td class="label">Amount Paid:</td>
-                    <td class="text-right">
-                        {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}
-                        {{ number_format($total_paid, 2) }}</td>
-                </tr>
-                <tr class="total-row">
-                    <td>BALANCE DUE:</td>
-                    <td class="text-right">
-                        {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}
-                        {{ number_format($balance_due, 2) }}</td>
-                </tr>
-            @endif
-        </table>
-    </div>
-
-    <!-- Transactions -->
-    @if (!empty($invoice->transactions) && is_iterable($invoice->transactions) && count($invoice->transactions) > 0)
+        <!-- Invoice Items -->
         <div class="invoice-items">
-            <h3>PAYMENT TRANSACTIONS</h3>
+            <h3>INVOICE DETAILS</h3>
             <table class="items-table">
                 <thead>
                     <tr>
-                        <th>Reference</th>
-                        <th>Date</th>
-                        <th>Payment Method</th>
-                        <th class="text-right">Amount Paid</th>
-                        <th>Status</th>
+                        <th>Description</th>
+                        <th class="text-center">Rate Type</th>
+                        <th class="text-center">Tax Rate</th>
+                        <th class="text-right">Amount</th>
+                        <th class="text-right">Tax</th>
+                        <th class="text-right">Subtotal</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach ($invoice->transactions as $t)
-                        @php
-                            $ref = is_object($t) ? $t->reference ?? 'N/A' : $t['reference'] ?? 'N/A';
-                            $date = is_object($t) ? $t->date ?? null : $t['date'] ?? null;
-                            $method = 'N/A';
-                            if (is_object($t) && isset($t->payment_method)) {
-                                $method = is_object($t->payment_method)
-                                    ? $t->payment_method->name ?? 'N/A'
-                                    : $t->payment_method['name'] ?? 'N/A';
-                            } elseif (is_array($t) && isset($t['payment_method'])) {
-                                $method = is_array($t['payment_method'])
-                                    ? $t['payment_method']['name'] ?? 'N/A'
-                                    : 'N/A';
-                            }
-                            $amt = (float) (is_object($t) ? $t->amount_paid ?? 0 : $t['amount_paid'] ?? 0);
-                            $status = is_object($t) ? $t->status ?? 'N/A' : $t['status'] ?? 'N/A';
-                        @endphp
-                        <tr>
-                            <td>{{ $ref }}</td>
-                            <td>{{ $safeFormat($date, 'M d, Y', 'N/A') }}</td>
-                            <td>{{ $method }}</td>
-                            <td class="text-right">
-                                {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}
-                                {{ number_format($amt, 2) }}</td>
-                            <td>{{ ucfirst($status) }}</td>
-                        </tr>
-                    @endforeach
+                    <tr>
+                        <td>
+                            <strong>Member Subscription - {{ $subscription->plan->name ?? 'Plan' }}</strong><br>
+                            {{ $subscription->plan->description ?? 'Subscription service' }}<br>
+                            Period: {{ $safeFormat($invoice->from_date ?? null) }} to
+                            {{ $safeFormat($invoice->to_date ?? null) }}
+                            @if (($invoice->total_check_ins ?? 0) > 0)
+                                <br>Total Check-ins: {{ $invoice->total_check_ins }}
+                            @endif
+                        </td>
+                        <td class="text-center">{{ $rateTypeName }}</td>
+                        <td class="text-center">{{ $taxRateDisplay }}%</td>
+                        <td class="text-right">
+                            {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}
+                            {{ number_format($invoice->amount ?? 0, 2) }}</td>
+                        <td class="text-right">
+                            {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}
+                            {{ number_format($invoice->tax_amount ?? 0, 2) }}</td>
+                        <td class="text-right">
+                            {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}
+                            {{ number_format(($invoice->amount ?? 0) + ($invoice->tax_amount ?? 0), 2) }}</td>
+                    </tr>
                 </tbody>
             </table>
         </div>
-    @endif
 
-    <!-- Footer -->
-    <div class="invoice-footer">
-        <div class="footer-grid">
-            <div class="footer-box">
-                <h4>Payment Instructions</h4>
-                <p>Please make payment by the due date to avoid service interruption.</p>
-                <p>Payment can be made at any branch or via online payment.</p>
+        <!-- Amounts -->
+        <div class="amounts-section">
+            <table class="amounts-table">
+                <tr>
+                    <td class="label">Subtotal:</td>
+                    <td class="text-right">
+                        {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}
+                        {{ number_format($invoice->amount ?? 0, 2) }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Tax ({{ $taxRateDisplay }}%):</td>
+                    <td class="text-right">
+                        {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}
+                        {{ number_format($invoice->tax_amount ?? 0, 2) }}</td>
+                </tr>
+                @if (($invoice->discount_amount ?? 0) > 0)
+                    <tr>
+                        <td class="label">Discount:</td>
+                        <td class="text-right">-${{ number_format($invoice->discount_amount ?? 0, 2) }}</td>
+                    </tr>
+                @endif
+                <tr class="total-row">
+                    <td>TOTAL DUE:</td>
+                    <td class="text-right">
+                        {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}
+                        {{ number_format($invoice->total_amount ?? 0, 2) }}</td>
+                </tr>
+                @if ($total_paid > 0)
+                    <tr>
+                        <td class="label">Amount Paid:</td>
+                        <td class="text-right">
+                            {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}
+                            {{ number_format($total_paid, 2) }}</td>
+                    </tr>
+                    <tr class="total-row">
+                        <td>BALANCE DUE:</td>
+                        <td class="text-right">
+                            {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}
+                            {{ number_format($balance_due, 2) }}</td>
+                    </tr>
+                @endif
+            </table>
+        </div>
+
+        <!-- Transactions -->
+        @if (!empty($invoice->transactions) && is_iterable($invoice->transactions) && count($invoice->transactions) > 0)
+            <div class="invoice-items">
+                <h3>PAYMENT TRANSACTIONS</h3>
+                <table class="items-table">
+                    <thead>
+                        <tr>
+                            <th>Reference</th>
+                            <th>Date</th>
+                            <th>Payment Method</th>
+                            <th class="text-right">Amount Paid</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($invoice->transactions as $t)
+                            @php
+                                $ref = is_object($t) ? $t->reference ?? 'N/A' : $t['reference'] ?? 'N/A';
+                                $date = is_object($t) ? $t->date ?? null : $t['date'] ?? null;
+                                $method = 'N/A';
+                                if (is_object($t) && isset($t->payment_method)) {
+                                    $method = is_object($t->payment_method)
+                                        ? $t->payment_method->name ?? 'N/A'
+                                        : $t->payment_method['name'] ?? 'N/A';
+                                } elseif (is_array($t) && isset($t['payment_method'])) {
+                                    $method = is_array($t['payment_method'])
+                                        ? $t['payment_method']['name'] ?? 'N/A'
+                                        : 'N/A';
+                                }
+                                $amt = (float) (is_object($t) ? $t->amount_paid ?? 0 : $t['amount_paid'] ?? 0);
+                                $status = is_object($t) ? $t->status ?? 'N/A' : $t['status'] ?? 'N/A';
+                            @endphp
+                            <tr>
+                                <td>{{ $ref }}</td>
+                                <td>{{ $safeFormat($date, 'M d, Y', 'N/A') }}</td>
+                                <td>{{ $method }}</td>
+                                <td class="text-right">
+                                    {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}
+                                    {{ number_format($amt, 2) }}</td>
+                                <td>{{ ucfirst($status) }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
             </div>
-            <div class="footer-box">
-                <h4>Contact Information</h4>
-                <p>For billing inquiries:</p>
-                <p>Email: billing@example.com</p>
-                <p>Phone: +255 XXX XXX XXX</p>
+        @endif
+
+        <!-- Footer -->
+        <div class="invoice-footer">
+            <div class="footer-grid">
+                <div class="footer-box">
+                    <h4>Payment Instructions</h4>
+                    <p>Please make payment by the due date to avoid service interruption.</p>
+                    <p>Payment can be made at any branch or via online payment.</p>
+                </div>
+                <div class="footer-box">
+                    <h4>Contact Information</h4>
+                    <p>For billing inquiries:</p>
+                    <p>Email: billing@example.com</p>
+                    <p>Phone: +255 XXX XXX XXX</p>
+                </div>
+            </div>
+
+            <div class="terms-conditions mt-20">
+                <p><strong>Terms & Conditions:</strong></p>
+                <p>1. Payment is due within
+                    {{ $safeDaysBetween($invoice->invoice_date ?? null, $invoice->due_date ?? null) }} days of invoice
+                    date.</p>
+                <p>2. Late payments may result in service suspension.</p>
+                <p>3. All amounts are in
+                    {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}.</p>
+            </div>
+
+            <div class="text-center mt-20">
+                <p>Generated on {{ $generated_at }}</p>
+                <p>This is a computer-generated invoice. No signature is required.</p>
             </div>
         </div>
-
-        <div class="terms-conditions mt-20">
-            <p><strong>Terms & Conditions:</strong></p>
-            <p>1. Payment is due within
-                {{ $safeDaysBetween($invoice->invoice_date ?? null, $invoice->due_date ?? null) }} days of invoice
-                date.</p>
-            <p>2. Late payments may result in service suspension.</p>
-            <p>3. All amounts are in
-                {{ optional(optional($invoice->company_subscription)->currency)->symbol ?? 'Frw' }}.</p>
-        </div>
-
-        <div class="text-center mt-20">
-            <p>Generated on {{ $generated_at }}</p>
-            <p>This is a computer-generated invoice. No signature is required.</p>
-        </div>
-    </div>
 
     </div>
 </body>

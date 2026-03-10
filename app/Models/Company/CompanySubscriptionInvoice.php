@@ -75,4 +75,11 @@ class CompanySubscriptionInvoice extends Model implements HasMedia
     {
         return $this->hasMany(\App\Models\Company\CompanySubscriptionTransaction::class);
     }
+
+    public function getFormattedInvoiceDateAttribute()
+    {
+        return $this->invoice_date instanceof \Carbon\Carbon
+            ? $this->invoice_date->format('M d, Y')
+            : date('M d, Y', strtotime($this->invoice_date));
+    }
 }

@@ -299,7 +299,7 @@
             // Safely get tax rate value
             $taxRateValue = 0;
             $taxRateDisplay = '0';
-            
+
             if (isset($invoice->tax_rate)) {
                 $taxRate = $invoice->tax_rate;
                 if (is_object($taxRate) && isset($taxRate->rate)) {
@@ -322,7 +322,7 @@
                     }
                 }
             }
-            
+
             // Safely get rate type name
             $rateTypeName = 'N/A';
             if (isset($invoice->rate_type)) {
@@ -346,8 +346,8 @@
             <div class="invoice-title">
                 <h2>INVOICE</h2>
                 <p class="mb-10">Reference: <strong>{{ $invoice->reference ?? 'N/A' }}</strong></p>
-                <p>Date: {{ \Carbon\Carbon::parse($invoice->invoice_date ?? now())->format('F d, Y') }}</p>
-                <p>Due Date: {{ \Carbon\Carbon::parse($invoice->due_date ?? now())->format('F d, Y') }}</p>
+                <p>Date: {{ $invoice->invoice_date instanceof \Carbon\Carbon ? $invoice->invoice_date->format('M d, Y') : date('M d, Y', strtotime($invoice->invoice_date)) }}<p>
+                <p>Due Date: {{ $invoice->due_date instanceof \Carbon\Carbon ? $invoice->due_date->format('M d, Y') : date('M d, Y', strtotime($invoice->due_date)) }}</p>
             </div>
         </div>
 
@@ -537,7 +537,7 @@
                 @php
                     $total_paid = 0;
                     $balance_due = $invoice->total_amount ?? 0;
-                    
+
                     // Check if transactions exist and is iterable
                     if (isset($invoice->transactions) && (is_array($invoice->transactions) || $invoice->transactions instanceof \Countable)) {
                         foreach ($invoice->transactions as $transaction) {
@@ -566,7 +566,7 @@
             // Safely check for transactions
             $hasTransactions = false;
             $transactions = collect([]);
-            
+
             if (isset($invoice->transactions)) {
                 if (is_array($invoice->transactions) && count($invoice->transactions) > 0) {
                     $hasTransactions = true;
@@ -580,7 +580,7 @@
                 }
             }
         @endphp
-        
+
         @if ($hasTransactions)
             <div class="invoice-items">
                 <h3>PAYMENT TRANSACTIONS</h3>
@@ -603,13 +603,13 @@
                                 $paymentMethod = 'N/A';
                                 $amountPaid = 0;
                                 $status = 'N/A';
-                                
+
                                 if (is_object($transaction)) {
                                     $transactionRef = $transaction->reference ?? 'N/A';
                                     $transactionDate = $transaction->date ?? null;
                                     $amountPaid = $transaction->amount_paid ?? 0;
                                     $status = $transaction->status ?? 'N/A';
-                                    
+
                                     if (isset($transaction->payment_method)) {
                                         if (is_object($transaction->payment_method)) {
                                             $paymentMethod = $transaction->payment_method->name ?? 'N/A';
@@ -622,7 +622,7 @@
                                     $transactionDate = $transaction['date'] ?? null;
                                     $amountPaid = $transaction['amount_paid'] ?? 0;
                                     $status = $transaction['status'] ?? 'N/A';
-                                    
+
                                     if (isset($transaction['payment_method'])) {
                                         if (is_array($transaction['payment_method'])) {
                                             $paymentMethod = $transaction['payment_method']['name'] ?? 'N/A';
@@ -670,7 +670,7 @@
 
             <div class="terms-conditions mt-20">
                 <p><strong>Terms & Conditions:</strong></p>
-                <p>1. Payment is due within 
+                <p>1. Payment is due within
                     @php
                         try {
                             $invoiceDate = \Carbon\Carbon::parse($invoice->invoice_date ?? now());
@@ -679,7 +679,7 @@
                         } catch (Exception $e) {
                             echo '30';
                         }
-                    @endphp 
+                    @endphp
                     days of invoice date.</p>
                 <p>2. Late payments may result in service suspension.</p>
                 <p>3. All amounts are in USD.</p>

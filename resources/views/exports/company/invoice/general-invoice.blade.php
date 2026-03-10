@@ -470,31 +470,6 @@
                             </div>
                         </div>
                     </td>
-
-                    <!-- INVOICE DETAILS -->
-                    <td style="padding: 5px; vertical-align: top; width: 33.33%;">
-                        <div class="info-box" style="margin: 0;">
-                            <h3 style="font-size: 10px; padding: 4px 6px;">INVOICE DETAILS</h3>
-                            <div class="info-details" style="padding: 0 6px;">
-                                <div class="info-row" style="font-size: 8px; margin-bottom: 2px;">
-                                    <span class="info-label" style="min-width: 70px; font-size: 8px;">Invoice #:</span>
-                                    <span>{{ $invoice->reference ?? 'N/A' }}</span>
-                                </div>
-                                <div class="info-row" style="font-size: 8px; margin-bottom: 2px;">
-                                    <span class="info-label" style="min-width: 70px; font-size: 8px;">Invoice Date:</span>
-                                    <span>{{ $safeFormat($invoice->invoice_date ?? null) }}</span>
-                                </div>
-                                <div class="info-row" style="font-size: 8px; margin-bottom: 2px;">
-                                    <span class="info-label" style="min-width: 70px; font-size: 8px;">Due Date:</span>
-                                    <span>{{ $safeFormat($invoice->due_date ?? null) }}</span>
-                                </div>
-                                <div class="info-row" style="font-size: 8px; margin-bottom: 2px;">
-                                    <span class="info-label" style="min-width: 70px; font-size: 8px;">Period:</span>
-                                    <span>{{ $safeFormat($invoice->from_date ?? null) }} to {{ $safeFormat($invoice->to_date ?? null) }}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </td>
                 </tr>
             </table>
         </div>

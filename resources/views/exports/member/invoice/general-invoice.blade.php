@@ -306,7 +306,7 @@
                 try {
                     // If it's already a Carbon instance
                     if ($date instanceof \Carbon\Carbon) {
-                        return $date->format($format);
+                        return $date;
                     }
 
                     // If it's a string, try to parse it

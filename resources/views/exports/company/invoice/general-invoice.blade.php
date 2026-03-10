@@ -330,18 +330,26 @@
         @endphp
 
         <!-- Header -->
-        <div class="invoice-header">
-            <div class="company-info">
-                <h1>Member Subscription Invoice</h1>
-                <p class="mb-10">Subscription Management System</p>
-                <p>Generated: {{ $generated_at }}</p>
-            </div>
-            <div class="invoice-title">
-                <h2>INVOICE</h2>
-                <p class="mb-10">Reference: <strong>{{ $invoice->reference ?? 'N/A' }}</strong></p>
-                <p>Date: {{ $safeFormat($invoice->invoice_date ?? null) }}</p>
-                <p>Due Date: {{ $safeFormat($invoice->due_date ?? null) }}</p>
-            </div>
+
+        <div class="invoice-header" style="width: 100%;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <td style="width: 60%; padding-right: 20px; vertical-align: top;">
+                        <h1 style="margin: 0 0 5px 0; font-size: 24px; color: #2c3e50;">Member Subscription Invoice</h1>
+                        <p style="margin: 0 0 5px 0; color: #7f8c8d;">Subscription Management System</p>
+                        <p style="margin: 0; font-size: 11px;">Generated: {{ $generated_at }}</p>
+                    </td>
+                    <td style="width: 40%; text-align: right; vertical-align: top;">
+                        <h2 style="margin: 0 0 5px 0; font-size: 28px; color: #e74c3c;">INVOICE</h2>
+                        <p style="margin: 0 0 3px 0; font-size: 11px;">Reference:
+                            <strong>{{ $invoice->reference ?? 'N/A' }}</strong></p>
+                        <p style="margin: 0 0 3px 0; font-size: 11px;">Date:
+                            {{ $safeFormat($invoice->invoice_date ?? null) }}</p>
+                        <p style="margin: 0; font-size: 11px;">Due Date: {{ $safeFormat($invoice->due_date ?? null) }}
+                        </p>
+                    </td>
+                </tr>
+            </table>
         </div>
 
         <!-- Status -->

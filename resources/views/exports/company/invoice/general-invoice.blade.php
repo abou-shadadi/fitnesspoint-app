@@ -411,32 +411,6 @@
                             </div>
                         </div>
                     </td>
-
-                    <!-- INVOICE DETAILS -->
-                    <td style="padding: 8px; vertical-align: top; width: 33.33%;">
-                        <div class="info-box" style="margin: 0;">
-                            <h3>INVOICE DETAILS</h3>
-                            <div class="info-details">
-                                <div class="info-row"><span class="info-label">Invoice #:</span>
-                                    <span>{{ $invoice->reference ?? 'N/A' }}</span>
-                                </div>
-                                <div class="info-row"><span class="info-label">Invoice Date:</span>
-                                    <span>{{ $safeFormat($invoice->invoice_date ?? null) }}</span>
-                                </div>
-                                <div class="info-row"><span class="info-label">Due Date:</span>
-                                    <span>{{ $safeFormat($invoice->due_date ?? null) }}</span>
-                                </div>
-                                <div class="info-row">
-                                    <span class="info-label">Period:</span>
-                                    <span>
-                                        {{ $safeFormat($invoice->from_date ?? null) }}
-                                        to
-                                        {{ $safeFormat($invoice->to_date ?? null) }}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    </td>
                 </tr>
             </table>
         </div>

@@ -7,16 +7,21 @@ use Illuminate\Database\Eloquent\Model;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 
-class CompanySubscriptionInvoice extends Model implements HasMedia {
+class CompanySubscriptionInvoice extends Model implements HasMedia
+{
 
     use HasFactory, InteractsWithMedia;
 
     protected $guarded = [];
     protected $casts = [
-        'from_date' => 'datetime',
         'to_date' => 'datetime',
         'due_date' => 'date',
-        'invoice_date' => 'date',
+        'invoice_date' => 'datetime',
+        'due_date' => 'datetime',
+        'from_date' => 'datetime',
+        'to_date' => 'datetime',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
     ];
 
     public function company_subscription()
@@ -60,13 +65,14 @@ class CompanySubscriptionInvoice extends Model implements HasMedia {
         return $this->hasMany(CompanySubscriptionInvoiceRecipient::class);
     }
 
-    public function company_subscription_invoice_bank_accounts(){
+    public function company_subscription_invoice_bank_accounts()
+    {
         return $this->hasMany(\App\Models\Company\CompanySubscriptionInvoiceBankAccount::class);
     }
 
 
-    public function company_subscription_transactions(){
+    public function company_subscription_transactions()
+    {
         return $this->hasMany(\App\Models\Company\CompanySubscriptionTransaction::class);
     }
-
 }

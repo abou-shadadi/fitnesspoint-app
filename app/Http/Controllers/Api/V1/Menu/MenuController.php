@@ -261,7 +261,7 @@ class MenuController extends Controller
      *   )
      * )
      */
-    public function update(Request $request, $menuId)
+    public function update(Request $request,$menuId)
     {
         $menu = Menu::find($menuId);
 
@@ -288,12 +288,18 @@ class MenuController extends Controller
             ], 422);
         }
 
-        $menu->update($request->all());
+        $menu->update([
+            'name' => $request->name,
+            'description' => $request->description,
+            'icon' => $request->icon,
+            'menu_group_id' => $request->menu_group_id,
+            'parent_id' => $request->parent_id,
+            ]);
 
         return response()->json([
             'success' => true,
             'message' => 'Menu updated successfully',
-            'data' => $menu,
+            'data' => $menu->id,
         ]);
     }
 

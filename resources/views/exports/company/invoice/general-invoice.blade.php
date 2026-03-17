@@ -161,6 +161,7 @@
 
         .text-right {
             text-align: right;
+
         }
 
         .text-center {

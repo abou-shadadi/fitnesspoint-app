@@ -552,6 +552,10 @@ class UserController extends Controller
                         'branch_id' => $branch,
                         'status' => 'active'
                     ]);
+                } else{
+                    $existsingUserBranch->update([
+                        'status' => 'active'
+                    ]);
                 }
             }
 
